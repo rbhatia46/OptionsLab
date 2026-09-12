@@ -1,0 +1,1 @@
+"""Options Lab application."""

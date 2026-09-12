@@ -1,0 +1,33 @@
+# Validation record
+
+Validated locally on 2026-09-13 using Python 3.13, NumPy 2.5.3, pandas 3.0.5, and PyArrow 25.0.1.
+
+## Automated checks
+
+`python -m unittest discover -s tests -v`: **16 tests passed**.
+
+Coverage includes put/call parity, implied-volatility inversion, numerical delta/gamma checks, strict as-of prices, immunity to future-only strike listings, whole-contract volume participation, side-aware fills, cash-flow/fee accounting, delayed stop fills, custom-leg signs, partial-entry unwinds, unresolved exposure, initial-capital drawdown, no-trade calendar dates, configuration validation, duplicate/invalid-row ingestion, cache reuse, missing source dates, and holdout-independent winner selection.
+
+Python compilation and JavaScript syntax checks passed. The authored Markdown guide was rendered into the app's packaged HTML help pages.
+
+## Real-archive checks
+
+- Indexed the June 2026 source pair with explicit nanosecond timestamps and source SHA-256 fingerprints.
+- The exact guide preset, June 1–7 at 0.01 BTC per leg, completed with seven closed positions and zero unresolved positions. Every closed position's P&L reconciled to its individual fill cash flows, including fees.
+- The four-variant June 1–14 delta/stop experiment completed and selected its winner on development dates only. Holdout results remained separately visible.
+- A stricter earlier size/time-window experiment produced partial entries and unresolved exposure; those positions were retained, later entries halted, and headline ratios suppressed.
+- Checked health, app, guide, methodology, preset, and asset endpoints; rejected invalid API input; reconciled JSON and CSV exports to the selected result.
+
+These are functionality checks, not strategy validation or a claim of trading profitability. Source data, actual trade evidence, and performance results remain in the local output directory and are excluded from this repository.
+
+## Browser checks
+
+- Inspected the working interface and a completed real-data result.
+- Configured and submitted a parameter-grid experiment through the form.
+- Verified the example-loading button changes the controls without submitting a run.
+- Verified the guide renders all 13 sections, the detailed example, and every field-reference group.
+- Verified the page's optional WebMCP configuration reader/stager in a supporting browser, including intentional rejection of an unknown field. WebMCP is feature-detected; ordinary browsers use the same visible controls.
+
+## Remaining limits
+
+The tests do not establish exchange execution fidelity, historical fee accuracy, live capital requirements, liquidation risk, official settlement values, or predictive performance. No overnight, rolling, hedging, settlement-to-expiry, or adaptive walk-forward simulation is claimed. See the methodology and usage guide for the full scope.

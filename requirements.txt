@@ -1,0 +1,4 @@
+# Exact versions used for the standalone repository validation (Python 3.13).
+numpy==2.5.3
+pandas==3.0.5
+pyarrow==25.0.1

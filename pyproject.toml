@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bitcoin-options-lab"
+version = "1.1.0"
+description = "Local Bitcoin options strategy research with auditable trade-print replay."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26,<3", "pandas>=2.2,<4", "pyarrow>=14,<26"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.options_lab" = ["web/*.html", "web/*.css", "web/*.js", "web/*.svg", "presets/*.json"]
