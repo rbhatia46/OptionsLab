@@ -1,0 +1,179 @@
+[
+  {
+    "id": "strangle-20",
+    "title": "20Δ short strangle",
+    "category": "Neutral",
+    "description": "Explore selling premium on both sides of the market.",
+    "rules": [
+      "Sell 0.20Δ put + call",
+      "Take profit 50% · stop 100% of credit"
+    ],
+    "caution": "Unhedged short legs; losses can exceed collected premium.",
+    "overrides": {
+      "name": "20Δ short strangle"
+    }
+  },
+  {
+    "id": "condor-20",
+    "title": "20Δ iron condor",
+    "category": "With wings",
+    "description": "Compare a strangle with protective long options.",
+    "rules": [
+      "Sell 0.20Δ put + call",
+      "Buy wings $1,000 farther out · TP 50% / SL 100%"
+    ],
+    "caution": "Wing liquidity and independent leg fills matter; protection requires filled wings.",
+    "overrides": {
+      "name": "20Δ iron condor",
+      "structure": "condor"
+    }
+  },
+  {
+    "id": "put-spread",
+    "title": "Bullish put credit spread",
+    "category": "Directional",
+    "description": "Test put premium selling after a nonnegative prior-hour move.",
+    "rules": [
+      "Sell 0.25Δ put · buy put $1,000 lower",
+      "Trailing 1h move ≥ 0% · TP 50% / SL 100%"
+    ],
+    "caution": "The move filter can skip days; a falling market can still produce losses.",
+    "overrides": {
+      "name": "Bullish put credit spread",
+      "structure": "put_spread",
+      "put_delta": 0.25,
+      "call_delta": 0.25,
+      "min_move_pct": 0
+    }
+  },
+  {
+    "id": "strangle-15",
+    "title": "15Δ wider strangle",
+    "category": "Neutral",
+    "description": "Explore lower target deltas with the same exit rules.",
+    "rules": [
+      "Sell 0.15Δ put + call · tolerance 0.05",
+      "Take profit 50% · stop 100% of credit"
+    ],
+    "caution": "Lower delta does not guarantee smaller losses or an available fill.",
+    "overrides": {
+      "name": "15Δ wider strangle",
+      "call_delta": 0.15,
+      "put_delta": 0.15,
+      "delta_tolerance": 0.05
+    }
+  },
+  {
+    "id": "straddle",
+    "title": "ATM short straddle",
+    "category": "Neutral",
+    "description": "Test selling the put and call at a common near-ATM strike.",
+    "rules": [
+      "Sell ATM put + call · delta targets ignored",
+      "Take profit 25% · stop 100% of credit"
+    ],
+    "caution": "Concentrated near-ATM exposure; rapid moves can trigger large losses.",
+    "overrides": {
+      "name": "ATM short straddle",
+      "structure": "straddle",
+      "take_profit_pct": 25
+    }
+  },
+  {
+    "id": "call-spread",
+    "title": "Bearish call credit spread",
+    "category": "Directional",
+    "description": "Test call premium selling after a nonpositive prior-hour move.",
+    "rules": [
+      "Sell 0.25Δ call · buy call $1,000 higher",
+      "Trailing 1h move ≤ 0% · TP 50% / SL 100%"
+    ],
+    "caution": "The move filter can skip days; a rising market can still produce losses.",
+    "overrides": {
+      "name": "Bearish call credit spread",
+      "structure": "call_spread",
+      "call_delta": 0.25,
+      "put_delta": 0.25,
+      "max_move_pct": 0
+    }
+  },
+  {
+    "id": "delta-wings",
+    "title": "Delta-selected wings",
+    "category": "With wings",
+    "description": "Build four custom legs using delta for both shorts and longs.",
+    "rules": [
+      "Sell 0.25Δ put + call · buy 0.10Δ put + call",
+      "1:1 ratios · tolerance 0.04 · TP 50% / SL 100%"
+    ],
+    "caution": "Strike widths vary. Custom legs use the per-short reserve, not spread margin.",
+    "overrides": {
+      "name": "Delta-selected wings",
+      "structure": "custom",
+      "call_delta": 0.25,
+      "put_delta": 0.25,
+      "delta_tolerance": 0.04,
+      "legs": [
+        {
+          "type": "P",
+          "side": "sell",
+          "delta": 0.25,
+          "ratio": 1
+        },
+        {
+          "type": "C",
+          "side": "sell",
+          "delta": 0.25,
+          "ratio": 1
+        },
+        {
+          "type": "P",
+          "side": "buy",
+          "delta": 0.1,
+          "ratio": 1
+        },
+        {
+          "type": "C",
+          "side": "buy",
+          "delta": 0.1,
+          "ratio": 1
+        }
+      ]
+    }
+  },
+  {
+    "id": "weekends",
+    "title": "Weekend short strangle",
+    "category": "Session study",
+    "description": "Isolate weekend sessions to study a different trading schedule.",
+    "rules": [
+      "Sell 0.20Δ put + call · weekends only",
+      "June 1–14, 2026 · TP 50% / SL 100%"
+    ],
+    "caution": "Only four eligible calendar days in this sample; extend it for research.",
+    "overrides": {
+      "name": "Weekend short strangle",
+      "days": "weekends",
+      "end": "2026-06-14"
+    }
+  },
+  {
+    "id": "delta-stop-grid",
+    "title": "Delta × stop comparison",
+    "category": "Experiment",
+    "description": "Compare four variants with a chronological holdout.",
+    "rules": [
+      "Deltas 0.15 / 0.20 × stops 100% / 150% · TP 50%",
+      "June 1–14 · 70% development · rank by Sharpe"
+    ],
+    "caution": "Three development trades is a demo threshold, not statistical evidence.",
+    "overrides": {
+      "name": "Delta × stop comparison",
+      "mode": "sweep",
+      "end": "2026-06-14",
+      "grid_delta": "0.15, 0.20",
+      "grid_stop": "100, 150",
+      "min_trades": 3
+    }
+  }
+]

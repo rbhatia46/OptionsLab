@@ -85,6 +85,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond({'application': 'options-lab', 'status': 'ready'})
             if path == '/api/presets/strangle-20-delta':
                 return self.respond(json.loads((Path(__file__).parent / 'presets/strangle-20-delta.json').read_text()))
+            if path == '/api/presets':
+                from .ideas import strategy_library
+                return self.respond(strategy_library())
             if path == '/api/catalog':
                 return self.respond(catalog())
             if path == '/api/runs':

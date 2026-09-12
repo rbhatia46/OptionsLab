@@ -26,6 +26,32 @@ The first run against a month indexes its full CSV files into a local cache. Thi
 
 This version uses a structured builder. You do not need Python for standard or custom-leg strategies. It does not compile an arbitrary sentence into new strategy logic; conditions not represented by the controls require an engine extension.
 
+### Start from the strategy library
+
+At the top of **Strategy workbench**, use **Start with an idea**. The first three cards are visible immediately; **Show all 9 ideas** expands the library. Category buttons filter the cards, and **Hide ideas / Browse ideas** collapses or reopens the library.
+
+1. Pick an idea and read its legs, exit rules, and caveat.
+2. Click **Load strategy**. This replaces **every builder input**, including dates, size, filters, costs, custom legs, and experiment settings. Save your current configuration first if you want to keep it.
+3. The page moves to the populated builder. Review **Session & sample**, **Exits & risk**, and **Execution & model assumptions**. Edit any rule you want to test.
+4. Click **Run backtest**. Loading a card only stages inputs; it does not start a run. Any existing results remain labelled with their original run until the new result is ready.
+5. For **Delta × stop comparison**, the Parameter experiment section opens automatically. Inspect **Compare** after completion.
+
+| Starting idea | Preloaded rules | What to explore |
+| --- | --- | --- |
+| 20Δ short strangle | Sell 0.20-delta put and call; 50% profit target, 100% credit-loss stop. | Baseline two-sided premium selling. |
+| 20Δ iron condor | Same shorts, with long wings $1,000 farther out. | Effect of protective wings and their fill costs. |
+| Bullish put credit spread | Sell 0.25-delta put, buy a put $1,000 lower; trailing 1h move at least 0%. | Directional entry filtering. |
+| 15Δ wider strangle | Sell 0.15-delta put and call, with 0.05 delta tolerance. | Lower target deltas under the same exits. |
+| ATM short straddle | Sell a put and call at a common near-ATM strike; 25% target, 100% stop. | Near-ATM premium selling. Delta targets do not select its strike. |
+| Bearish call credit spread | Sell 0.25-delta call, buy a call $1,000 higher; trailing 1h move at most 0%. | The opposite directional filter. |
+| Delta-selected wings | Custom legs: sell 0.25-delta put/call, buy 0.10-delta put/call, ratios 1, tolerance 0.04. | Choosing protective legs by delta rather than strike distance. Custom margin uses the per-short reserve. |
+| Weekend short strangle | Baseline 0.20-delta strangle on weekends, June 1–14, 2026. | Calendar filtering; the example has only four eligible calendar days. |
+| Delta × stop comparison | Deltas 0.15/0.20, stops 100%/150%, target 50%, June 1–14; 70% development, Sharpe objective, minimum 3 development trades. | A four-variant experiment with a separate chronological holdout. |
+
+All cards use 0.01 BTC per base leg, $10,000 initial capital, 0 DTE, a 06:00 UTC entry and an 11:30 UTC time exit. Single ideas default to June 1–7, 2026 unless noted above. Shared costs are 1% premium slippage, 10% participation, 1-second latency, a 300-second fill timeout, a 0.01% notional fee capped at 3.5% of premium, and 18% tax on fees. These are editable assumptions. Other shared controls follow the detailed example below.
+
+These templates express research questions; they have not been selected as profitable strategies. A valid configuration can produce skipped entries, partial fills, or unresolved exits. Inspect Audit and extend the sample before interpreting performance. Switching to a standard idea resets the hidden custom editor to the default two short legs.
+
 ## 3. Complete example: sell a 0.20-delta intraday strangle
 
 **Question:** What happened when I attempted to sell a roughly 0.20-delta put and call each day, at 0.01 BTC per leg, with a 50% credit profit target and a 100% credit loss stop?

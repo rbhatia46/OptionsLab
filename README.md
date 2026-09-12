@@ -87,3 +87,5 @@ node --check app/options_lab/web/app.js  # optional JavaScript syntax check
 ```
 
 The tests exercise pricing identities, IV inversion, analytical Greeks against numerical sensitivities, as-of timing, whole-contract volume limits, fill costs, partial-entry unwinds, unresolved exposure, drawdown from starting capital, validation, and ingestion caching. Browser validation and real-data smoke results are documented in [validation notes](docs/validation.md).
+
+The Research workspace includes a nine-idea strategy library: one-click configurations for delta strangles, iron condors, directional credit spreads, an ATM straddle, custom delta wings, weekends, and a four-variant holdout comparison. Each loads all inputs for review before running. See the [usage guide](docs/usage-guide.md#start-from-the-strategy-library).
