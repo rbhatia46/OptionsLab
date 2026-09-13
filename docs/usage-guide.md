@@ -43,27 +43,52 @@ Previously saved runs retain their original sizing mode and calculations. Reusin
 
 Standard cards generally use June 1–7, 2026, 0 DTE and 11:30–17:00 IST. They use the full-size observed-price proxy. To test historical execution capacity, choose **Show advanced settings → Fill model → Strict observed print volume**. In that mode, participation and the fill timeout apply; 1 BTC can produce partial fills or unresolved exposure.
 
-## 4. Detailed running example: 1 BTC ATM straddle
+## 4. Detailed running example: 1 BTC 20-delta short strangle
 
 This is a one-day workflow walkthrough, not a profitability or robustness study. It uses the full-size observed-price proxy. Do not treat its fills as evidence that the historical market had enough depth for a live 1 BTC order.
 
 1. Click **Load the guide example** in the app header. Unlike library cards, this button deliberately sets the exact example, including **1 BTC** quantity.
-2. Confirm **Strategy name = Guide · 1 BTC ATM straddle**.
-3. Confirm **Structure = Short straddle** and **Position size (BTC per leg) = 1**. Both put and call use the same near-ATM strike; delta targets do not select that strike.
+2. Confirm **Strategy name = Guide · 1 BTC 20-delta short strangle**.
+3. Confirm **Structure = Short strangle**, **Selection method = Absolute delta**, **Call delta = 0.20**, **Put delta = 0.20**, **Delta tolerance = 0.08**, and **Position size (BTC per leg) = 1**. The engine separately selects a call near +0.20 delta and a put near −0.20 delta.
 4. Under **Session & sample**, set **From = 2026-06-01**, **Through = 2026-06-01**, **Entry decision = 11:30**, **Time exit = 17:00**, and **Trade days = Every day**. All displayed session times are IST.
-5. Under **Exits & risk**, confirm **Profit target = 25** and **Stop loss = 100**. These are percentages of net entry credit, not a percentage change in the BTC price.
+5. Under **Exits & risk**, confirm **Profit target = 50** and **Stop loss = 100**. These are percentages of net entry credit, not a percentage change in the BTC price.
 6. Click **Show advanced settings**. The exact additional values are below; the guide button has already populated them.
 7. Click **Run backtest**. The button changes immediately, a spinner appears, and the status shows the current operation, elapsed time and approximate ETA once there is enough progress to estimate it.
 8. After completion, read **What this run actually tested**. Check requested size, complete entries, closed positions, unresolved exposure and net P&L. The run can lose money; that does not mean the calculation failed.
 9. Open **Trade ledger**, click its date, and inspect the two symbols, filled BTC, entry Greeks and individual fills. Open **Audit** for data hashes and rejected-entry reasons.
 10. Export **Full result + configuration** or **Trade ledger CSV**. For a research study, extend the sample and test stricter participation assumptions. Do not extrapolate this single trade's Sharpe or win rate.
 
+With the supplied archive and engine version 1.3.0, this exact one-day run should produce the following reproducibility check. Small display-rounding differences are acceptable; different symbols, quantities, exit reason, or unresolved exposure are not.
+
+| Verification item | Expected result |
+| --- | --- |
+| Runtime after the June cache exists | About 1 second; first use can take longer while indexing |
+| Complete entries / closed / unresolved | 1 / 1 / 0 |
+| Put selected | `P-BTC-72800-010626`, 1.000 BTC, decision delta about −0.19793, IV about 32.41% |
+| Call selected | `C-BTC-73800-010626`, 1.000 BTC, decision delta about +0.20506, IV about 29.91% |
+| Entry / exit shown in the UI | About 11:30:01 IST / 13:19:04 IST |
+| Entry credit | $137.61 |
+| Exit reason | Credit stop |
+| Net P&L | About −$143.71 after $14.68 fees and $4.03 modeled slippage |
+| Max observed drawdown | About $147.33 |
+| Win rate | 0% from one closed position |
+| Sharpe | Hidden as **Too few trades**, because the UI requires at least 20 closed positions |
+
+For a second check, change only **Through** to **2026-06-07**. The cached run should take only a few seconds. Engine 1.3.0 produced 7 complete entries, 7 closed positions, 0 unresolved positions, 3 profit targets, 4 credit stops, net P&L about −$360.82, max observed drawdown about $396.31, win rate 42.86%, fees $93.75, slippage $26.07, and mark coverage 99.76%. The engine calculates a seven-day Sharpe, but the headline remains hidden because seven trades are too few.
+
+Use durations in stages:
+
+1. **One day** verifies selection, 1 BTC sizing, IST conversion, costs, and exit accounting against the figures above.
+2. **Seven days** verifies repeated daily entry and both target and stop exits against the second check above.
+3. **At least 90 calendar days** is a first research sample. Review missing days, complete entries, unresolved exposure, and monthly consistency before interpreting performance.
+4. **The full available period** is the final single-rule replay. Use the chronological holdout experiment for comparisons and avoid choosing rules from the holdout result.
+
 | Advanced control | Example value |
 | --- | --- |
-| Selection method | Absolute delta; ignored for ATM strike selection |
+| Selection method | Absolute delta |
 | Expiry target (DTE) | 0 |
-| Call delta / Put delta / Delta tolerance | 0.20 / 0.20 / 0.08; targets ignored for straddle |
-| OTM distance / Wing width | 1% / $1,000; ignored for straddle |
+| Call delta / Put delta / Delta tolerance | 0.20 / 0.20 / 0.08 |
+| OTM distance / Wing width | 1% / $1,000; ignored for a delta-selected strangle |
 | Entry retry window | 30 minutes |
 | Minimum credit | $1 total entry premium |
 | Max loss per trade / Portfolio delta cap | 0 / 0, both disabled |
@@ -174,3 +199,9 @@ If exits remain unresolved, headline total P&L and ratios are unavailable; reali
 ## 12. IST and stored timestamps
 
 Session controls, run creation times, ledger timestamps, chart labels and displayed fill evidence use IST (UTC+05:30). Saved configurations, API requests and raw exports retain UTC for reproducibility; importing them converts their times to IST once. The guide therefore displays 11:30 entry, 17:00 exit and 17:30 expiry. Same-date intraday sessions from 05:30 IST onward are currently supported; earlier starts and sessions crossing IST midnight need a future cross-date replay extension. Expiry times after midnight refer to the following IST date when converted from the contract’s UTC expiry date.
+
+## 13. Relationship to the earlier research engine
+
+Options Lab can reproduce the main intraday short-strangle and iron-condor studies from `BitcoinOptionsAlgo`: fixed BTC per leg, delta or OTM selection, DTE, IST entry and exit, entry retry, wing distance, minimum credit, credit-based target and stop, fees, slippage, and per-trade audit data. It also adds saved runs, custom legs, IV/trend filters, Greeks, and chronological delta/stop/target comparisons.
+
+Some specialized rules from the earlier scripts are not yet controls in this UI: Supertrend-generated directional entries and flip exits, overnight hold-to-expiry settlement, minimum-hours-to-expiry selection, and a single experiment grid spanning entry time, OTM distance, and wing-width multipliers. Test those as separate UI configurations for now; do not assume the generic parameter experiment varies them.

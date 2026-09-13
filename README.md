@@ -32,14 +32,14 @@ Read the [complete usage guide](docs/usage-guide.md) for an exact 0.20-delta str
 
 - Short strangles, straddles, iron condors, call/put credit spreads, naked calls/puts, and custom 1–6-leg net-credit structures.
 - Absolute delta selection (for example, 0.20 delta calls and puts), OTM strike distance, wing widths, BTC quantity, and calendar DTE targets.
-- Intraday entry/exit times in UTC, a minute-by-minute entry retry window, and weekday/weekend filters.
+- Intraday entry/exit times in IST, a minute-by-minute entry retry window, and weekday/weekend filters.
 - Per-leg IV bounds and a trailing one-hour underlying-return filter.
 - Portfolio profit targets and stop losses as a percentage of actual entry credit; optional cash-loss and net-delta exits.
 - A full-size observed-price model for strategy research, plus strict trade-volume participation for execution-capacity tests; both support latency, stale-price limits, adverse slippage, fees, premium fee caps, and fee tax.
 - BTC quantity controls position size; the current UI has no account-capital constraint. Legacy capital-mode runs remain reproducible.
 - Up to 36 combinations of delta, stop, and target, ranked by development Sharpe, P&L, or dollar drawdown. The final chronological portion is reported separately as holdout.
 
-DTE selects the first *observed* expiry on or after the target date, within three days. All positions close in the same UTC session; choosing a longer-dated contract does not enable overnight holding. The straddle uses a common ATM strike. Condors and spreads buy wings at least the configured distance beyond their short strikes.
+DTE selects the first *observed* expiry on or after the target date, within three days. All positions close in the same IST session; choosing a longer-dated contract does not enable overnight holding. The straddle uses a common ATM strike. Condors and spreads buy wings at least the configured distance beyond their short strikes.
 
 ## Results
 
