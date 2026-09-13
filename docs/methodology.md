@@ -10,9 +10,19 @@
 6. The normal full-size price proxy fills requested BTC at the freshest observed option print available after latency, regardless of buyer role or source-print size. The strict volume mode instead uses side-aware prints; capacity is `floor(contracts × participation_fraction)`, converted with `0.001 BTC / contract`. Both modes apply adverse premium slippage, fees and tax.
 7. On complete entry, monitor fresh liquidation-side marks at each relevant option event. When delta exits are enabled, underlying trade events also trigger checks. Net liquidation P&L includes all entry fees, adverse closing slippage, and estimated closing fees.
 8. A trigger submits close orders after latency; fills may be worse than the trigger. A partially filled exit gets one additional fill window. No post-expiry or next-session prints can fill an order.
-9. In strict volume mode, an incomplete entry is not erased: cancel the remainder at its timeout and attempt to unwind the filled exposure. A failed unwind/exit is an unresolved position and halts later entries. The full-size proxy can still be unresolved when no sufficiently fresh option or underlying print exists.
+9. In strict volume mode, an incomplete entry is not erased: cancel the remainder at its timeout and attempt to unwind the filled exposure. A failed unwind/exit is an unresolved position and halts later entries. In full-size price mode only, a failed exit may use the latest already-known option trade within **Exit price max age**. The fill records `price_source`, source timestamp, and age. A price beyond that bound remains unresolved.
 
 One entry opportunity window and at most one entered position per date; no re-entry after a filled position. The model does not simulate stops during the initial leg-filling interval or reconcile a missed stop retrospectively.
+
+For OTM-distance selection, a short strike must be on the requested OTM side and its actual percentage distance must be within **OTM tolerance** of the target. If no strike qualifies, the engine retries or skips the date; it does not silently choose a much farther contract.
+
+## Futures trend replay
+
+BTCUSD trades are aggregated into fixed OHLCV bars aligned to IST; weekly bars begin Monday at 00:00 IST. Supported widths are 30 seconds, 1/2/3/5/10/15/30/90 minutes, 1/2/4/6/12 hours, 1/3 days, and 1 week. Indicator warm-up occurs inside the selected sample.
+
+Moving-average crossover supports SMA or EMA fast/slow pairs. Supertrend uses Wilder-style exponentially smoothed true range with a configurable ATR period and multiplier. A signal only becomes actionable after its bar closes, and execution uses the next bar's open with adverse slippage. Long + short, long-only, and short-only modes are supported.
+
+Optional futures stops and targets are percentages of BTC price from the filled entry. If both are touched inside one OHLC bar, the stop wins because tick order inside the constructed bar is not reconstructed. Positions otherwise close on a signal change or the final sample bar. P&L is `direction × BTC quantity × (exit fill − entry fill)`, less notional fees and tax. The model does not include funding, spread, order-book depth, margin liquidation, futures basis, or capacity limits.
 
 ## Pricing and Greeks
 

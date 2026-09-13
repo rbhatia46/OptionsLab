@@ -1,4 +1,5 @@
 {
+  "strategy_family": "options",
   "execution_mode": "price",
   "sizing_mode": "btc",
   "name": "Guide \u00b7 1 BTC 20-delta short strangle",
@@ -9,6 +10,7 @@
   "put_delta": 0.2,
   "delta_tolerance": 0.08,
   "otm_pct": 1.0,
+  "otm_tolerance_pct": 1.0,
   "wing_width": 1000.0,
   "quantity_btc": 1,
   "start": "2026-06-01",
@@ -34,6 +36,7 @@
   "latency_sec": 1.0,
   "fill_timeout_sec": 600,
   "max_age_sec": 300.0,
+  "exit_price_max_age_sec": 21600.0,
   "spot_age_sec": 60.0,
   "fee_pct": 0.01,
   "fee_cap_pct": 3.5,
@@ -47,6 +50,16 @@
   "objective": "sharpe",
   "train_pct": 70.0,
   "min_trades": 5,
+  "trend_strategy": "ma_crossover",
+  "trend_timeframe": "15m",
+  "trend_direction": "long_short",
+  "trend_ma_type": "ema",
+  "trend_fast": 20,
+  "trend_slow": 50,
+  "supertrend_period": 10,
+  "supertrend_multiplier": 3.0,
+  "trend_take_profit_pct": 0.0,
+  "trend_stop_loss_pct": 0.0,
   "legs": [
     {
       "type": "P",

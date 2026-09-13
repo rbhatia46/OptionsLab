@@ -1,4 +1,5 @@
 {
+  "strategy_family": "options",
   "execution_mode": "price",
   "name": "Guide example \u00b7 20-delta short strangle",
   "structure": "strangle",
@@ -8,6 +9,7 @@
   "put_delta": 0.2,
   "delta_tolerance": 0.08,
   "otm_pct": 1.0,
+  "otm_tolerance_pct": 1.0,
   "wing_width": 1000.0,
   "quantity_btc": 0.01,
   "start": "2026-06-01",
@@ -33,6 +35,7 @@
   "latency_sec": 1.0,
   "fill_timeout_sec": 300.0,
   "max_age_sec": 300.0,
+  "exit_price_max_age_sec": 21600.0,
   "spot_age_sec": 60.0,
   "fee_pct": 0.01,
   "fee_cap_pct": 3.5,

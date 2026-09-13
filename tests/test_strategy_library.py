@@ -7,7 +7,7 @@ from app.options_lab.ideas import strategy_library
 class StrategyLibraryTests(unittest.TestCase):
     def test_every_idea_is_complete_and_valid(self):
         ideas = strategy_library()
-        self.assertEqual(len(ideas), 9)
+        self.assertEqual(len(ideas), 13)
         self.assertEqual(len({idea['id'] for idea in ideas}), len(ideas))
         for idea in ideas:
             with self.subTest(idea=idea['id']):

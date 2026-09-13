@@ -13,24 +13,29 @@ import pandas as pd
 from .data import index_source, load_day
 from .pricing import YEAR_NS, implied_vol, greeks
 
-VERSION = 'options-lab-1.3.0'
+VERSION = 'options-lab-1.4.0'
 SECOND = 1_000_000_000
-DEFAULTS = dict(sizing_mode='capital', execution_mode='volume', name='20Δ short strangle', structure='strangle', selection='delta', dte=0,
-    call_delta=.2, put_delta=.2, delta_tolerance=.08, otm_pct=1., wing_width=1000., quantity_btc=.01,
+DEFAULTS = dict(sizing_mode='capital', execution_mode='volume', strategy_family='options', name='20Δ short strangle', structure='strangle', selection='delta', dte=0,
+    call_delta=.2, put_delta=.2, delta_tolerance=.08, otm_pct=1., otm_tolerance_pct=1., wing_width=1000., quantity_btc=.01,
     start='2026-06-01', end='2026-06-07', entry_time='06:00', exit_time='11:30', entry_window_min=30,
     days='all', take_profit_pct=50., stop_loss_pct=100., min_credit=1., max_loss_usd=0., delta_exit=0.,
     capital=10000., margin_pct=20., allocation_pct=80., min_iv=0., max_iv=500., min_move_pct=-100.,
     max_move_pct=100., slippage_pct=1., participation_pct=10., latency_sec=1., fill_timeout_sec=300.,
-    max_age_sec=300., spot_age_sec=60., fee_pct=.01, fee_cap_pct=3.5, tax_pct=18., rate_pct=0.,
+    max_age_sec=300., exit_price_max_age_sec=21600., spot_age_sec=60., fee_pct=.01, fee_cap_pct=3.5, tax_pct=18., rate_pct=0.,
     expiry_hour=12, mode='single', grid_delta='0.15, 0.2, 0.25', grid_stop='100, 150', grid_tp='50',
-    objective='sharpe', train_pct=70., min_trades=5)
-BOUNDS = dict(dte=(0,30),call_delta=(.01,.95),put_delta=(.01,.95),delta_tolerance=(.005,.3),otm_pct=(0,50),
+    objective='sharpe', train_pct=70., min_trades=5,
+    trend_strategy='ma_crossover', trend_timeframe='15m', trend_direction='long_short', trend_ma_type='ema',
+    trend_fast=20, trend_slow=50, supertrend_period=10, supertrend_multiplier=3.,
+    trend_take_profit_pct=0., trend_stop_loss_pct=0.)
+BOUNDS = dict(dte=(0,30),call_delta=(.01,.95),put_delta=(.01,.95),delta_tolerance=(.005,.3),otm_pct=(0,50),otm_tolerance_pct=(0,10),
     wing_width=(1,100000),quantity_btc=(.001,100),entry_window_min=(0,120),take_profit_pct=(1,100),
     stop_loss_pct=(1,1000),min_credit=(0,1e7),max_loss_usd=(0,1e9),delta_exit=(0,1000),capital=(100,1e10),
     margin_pct=(1,100),allocation_pct=(1,100),min_iv=(0,1000),max_iv=(1,1000),min_move_pct=(-100,100),
     max_move_pct=(-100,100),slippage_pct=(0,50),participation_pct=(1,100),latency_sec=(0,60),
-    fill_timeout_sec=(1,600),max_age_sec=(1,1800),spot_age_sec=(1,600),fee_pct=(0,1),fee_cap_pct=(0,100),
-    tax_pct=(0,100),rate_pct=(-10,50),expiry_hour=(1,23),train_pct=(50,90),min_trades=(1,10000))
+    fill_timeout_sec=(1,600),max_age_sec=(1,1800),exit_price_max_age_sec=(300,86400),spot_age_sec=(1,600),fee_pct=(0,1),fee_cap_pct=(0,100),
+    tax_pct=(0,100),rate_pct=(-10,50),expiry_hour=(1,23),train_pct=(50,90),min_trades=(1,10000),
+    trend_fast=(1,10000),trend_slow=(2,20000),supertrend_period=(1,10000),supertrend_multiplier=(.1,100),
+    trend_take_profit_pct=(0,100),trend_stop_loss_pct=(0,100))
 
 
 def validate_request(payload):
@@ -44,16 +49,18 @@ def validate_request(payload):
         value=c[key]
         if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not lo<=value<=hi:
             raise ValueError(f'{key} must be a number between {lo} and {hi}.')
-    for key in ('dte','expiry_hour','min_trades','entry_window_min'):
+    for key in ('dte','expiry_hour','min_trades','entry_window_min','trend_fast','trend_slow','supertrend_period'):
         if int(c[key]) != c[key]:
             raise ValueError(f'{key} must be an integer.')
         c[key] = int(c[key])
     if abs(c['quantity_btc']/.001-round(c['quantity_btc']/.001))>1e-6:
         raise ValueError('BTC quantity must be a multiple of the 0.001 BTC contract.')
-    choices = dict(sizing_mode=['capital','btc'], execution_mode=['price','volume'],
+    choices = dict(sizing_mode=['capital','btc'], execution_mode=['price','volume'],strategy_family=['options','trend'],
                    structure=['strangle','straddle','condor','call_spread','put_spread','short_call','short_put','custom'],
                    selection=['delta','otm'],days=['all','weekdays','weekends'],mode=['single','sweep'],
-                   objective=['sharpe','net_pnl','calmar','drawdown'])
+                   objective=['sharpe','net_pnl','calmar','drawdown'],trend_strategy=['ma_crossover','supertrend'],
+                   trend_timeframe=['30s','1m','2m','3m','5m','10m','15m','30m','90m','1h','2h','4h','6h','12h','1D','3D','1W'],
+                   trend_direction=['long_short','long_only','short_only'],trend_ma_type=['sma','ema'])
     for key,values in choices.items():
         if c[key] not in values:
             raise ValueError(f'Invalid {key}. Choose from {values}.')
@@ -65,22 +72,29 @@ def validate_request(payload):
     start,end=pd.Timestamp(c['start'],tz='UTC'),pd.Timestamp(c['end'],tz='UTC')
     if start>end or (end-start).days>1095:
         raise ValueError('Select an ordered date range no longer than three years.')
-    calendar_days=pd.date_range(start,end,freq='D')
-    eligible_days=sum(c['days']=='all' or (c['days']=='weekdays' and day.dayofweek<5) or
-                      (c['days']=='weekends' and day.dayofweek>=5) for day in calendar_days)
-    if not eligible_days:
-        raise ValueError(f'Trade days = {c["days"]} excludes every date from {c["start"]} through {c["end"]}. Change Trade days or the date range.')
+    if c['strategy_family']=='options':
+        calendar_days=pd.date_range(start,end,freq='D')
+        eligible_days=sum(c['days']=='all' or (c['days']=='weekdays' and day.dayofweek<5) or
+                          (c['days']=='weekends' and day.dayofweek>=5) for day in calendar_days)
+        if not eligible_days:
+            raise ValueError(f'Trade days = {c["days"]} excludes every date from {c["start"]} through {c["end"]}. Change Trade days or the date range.')
     for key in ('entry_time','exit_time'):
         if not isinstance(c[key],str) or not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d',c[key]):
             raise ValueError(f'{key} must be a UTC HH:MM time.')
     minute=lambda s:int(s[:2])*60+int(s[3:])
-    if minute(c['entry_time'])+c['entry_window_min']+(c['latency_sec']+c['fill_timeout_sec'])/60>=minute(c['exit_time']):
-        raise ValueError('Entry window plus fill timeout must finish before the time exit.')
-    if minute(c['exit_time'])+(c['latency_sec']+2*c['fill_timeout_sec'])/60>=min(1440,c['expiry_hour']*60 if c['dte']==0 else 1440):
-        raise ValueError('Allow two fill windows after time exit, before expiry or UTC midnight.')
-    if c['min_iv']>c['max_iv'] or c['min_move_pct']>c['max_move_pct']:
-        raise ValueError('Filter minimum cannot exceed maximum.')
-    if c['structure']=='custom':
+    if c['strategy_family']=='options':
+        if minute(c['entry_time'])+c['entry_window_min']+(c['latency_sec']+c['fill_timeout_sec'])/60>=minute(c['exit_time']):
+            raise ValueError('Entry window plus fill timeout must finish before the time exit.')
+        if minute(c['exit_time'])+(c['latency_sec']+2*c['fill_timeout_sec'])/60>=min(1440,c['expiry_hour']*60 if c['dte']==0 else 1440):
+            raise ValueError('Allow two fill windows after time exit, before expiry or UTC midnight.')
+        if c['min_iv']>c['max_iv'] or c['min_move_pct']>c['max_move_pct']:
+            raise ValueError('Filter minimum cannot exceed maximum.')
+    if c['strategy_family']=='trend':
+        if c['mode']!='single':
+            raise ValueError('Futures trend strategies currently require Single configuration mode.')
+        if c['trend_strategy']=='ma_crossover' and c['trend_fast']>=c['trend_slow']:
+            raise ValueError('Fast moving-average bars must be fewer than slow moving-average bars.')
+    if c['strategy_family']=='options' and c['structure']=='custom':
         legs=c.get('legs')
         if not isinstance(legs,list) or not 1<=len(legs)<=6:
             raise ValueError('Custom structures require 1–6 legs.')
@@ -250,6 +264,10 @@ def select_legs(books,spots,t,c):
                 target_strike=spot[0]*(1+(1 if kind=='C' else -1)*c['otm_pct']/100)
                 # For OTM mode, don't drift towards an ITM strike when the intended strike is absent.
                 leg=choose(kind,'sell',target_strike=target_strike,wing=target_strike)
+                if leg is not None:
+                    actual=abs(leg['book'].strike/spot[0]-1)*100
+                    if abs(actual-c['otm_pct'])>c['otm_tolerance_pct']:
+                        leg=None
             if leg is None:
                 return None,'no_eligible_short_leg'
             legs.append(leg)
@@ -276,7 +294,7 @@ def select_legs(books,spots,t,c):
     return dict(legs=legs,credit=credit,reserve=reserve,spot=spot[0]),None
 
 
-def fill_order(book,side,qty,decision,spots,c,deadline=None):
+def fill_order(book,side,qty,decision,spots,c,deadline=None,price_max_age_sec=None,allow_future=True):
     begin=decision+int(c['latency_sec']*SECOND)
     end=min(begin+int(c['fill_timeout_sec']*SECOND),book.expiry-1,deadline if deadline else book.expiry-1)
     if c['execution_mode']=='price':
@@ -284,14 +302,17 @@ def fill_order(book,side,qty,decision,spots,c,deadline=None):
         # latency expires, regardless of buyer role. If none is fresh, use the
         # first subsequent print inside the fill window. Size is intentionally
         # ignored; strict capacity testing is the separate volume mode.
+        age_limit=c['max_age_sec'] if price_max_age_sec is None else price_max_age_sec
         quotes=[]
         for source in book.roles.values():
-            quote=source.asof(begin,c['max_age_sec'])
+            quote=source.asof(begin,age_limit)
             if quote is not None:
                 quotes.append((int(quote[1]),float(quote[0])))
         if quotes:
-            _,raw=max(quotes,key=lambda q:q[0]);t=begin
+            quote_time,raw=max(quotes,key=lambda q:q[0]);t=begin
         else:
+            if not allow_future:
+                return [],qty,end
             future=[]
             for source in book.roles.values():
                 i=int(np.searchsorted(source.t,begin,side='right'))
@@ -299,14 +320,17 @@ def fill_order(book,side,qty,decision,spots,c,deadline=None):
                     future.append((int(source.t[i]),float(source.p[i])))
             if not future:
                 return [],qty,end
-            t,raw=min(future,key=lambda q:q[0])
+            t,raw=min(future,key=lambda q:q[0]);quote_time=t
         underlying=spots.asof(t,c['spot_age_sec'])
         if underlying is None:
             return [],qty,end
         price=raw*(1+(-1 if side=='sell' else 1)*c['slippage_pct']/100)
         fee=min(qty*underlying[0]*c['fee_pct']/100,qty*price*c['fee_cap_pct']/100)*(1+c['tax_pct']/100)
+        quote_age=(t-quote_time)/SECOND
+        source='bounded_stale_exit_price' if price_max_age_sec is not None and quote_age>c['max_age_sec'] else 'observed_option_trade'
         fill=dict(timestamp_ns=t,time=iso(t),side=side,quantity_btc=qty,price=price,raw_price=raw,
-                  fee=fee,slippage=qty*abs(price-raw),underlying=underlying[0])
+                  fee=fee,slippage=qty*abs(price-raw),underlying=underlying[0],price_source=source,
+                  quote_time=iso(quote_time),quote_age_sec=quote_age)
         return [fill],0.,t
     ticks=book.roles[role(side)]
     first=int(np.searchsorted(ticks.t,begin,side='right'))
@@ -440,6 +464,13 @@ def replay_day(date,books,spots,c,equity,progress):
             retry,left,_=fill_order(leg['book'],opposite(leg['side']),remaining,end,spots,c,
                                    midnight+86400*SECOND-1)
             fills+=retry;remaining=left
+        # Research price mode may use an older, already-observed print for the exit.
+        # This prevents one illiquid contract from invalidating the remaining sample,
+        # while preserving the exact source timestamp and age in the audit evidence.
+        if remaining>1e-10 and c['execution_mode']=='price':
+            fallback,left,_=fill_order(leg['book'],opposite(leg['side']),remaining,end,spots,c,
+                                       midnight+86400*SECOND-1,price_max_age_sec=c['exit_price_max_age_sec'],allow_future=False)
+            fills+=fallback;remaining=left
         leg['exit_fills']=fills;exit_fills+=fills
         if fills:
             exit_completion=max(exit_completion,max(f['timestamp_ns'] for f in fills))
@@ -474,7 +505,7 @@ def replay_day(date,books,spots,c,equity,progress):
         mae=minp,mfe=maxp,mark_events=observations,fresh_marks=fresh,invalid_greek_events=invalid_greeks,
         mark_coverage_pct=100*fresh/observations if observations else None,
         entry_greeks=greek_at_entry,legs=serialized,planned_legs=planned,unresolved=unresolved,path=compact,
-        execution_model=('full requested BTC at a fresh observed option price' if c['execution_mode']=='price'
+        execution_model=('full requested BTC at an observed option price; exits may use the configured bounded stale-price fallback' if c['execution_mode']=='price'
                          else 'independent side-aware volume-constrained trade-print fills'),
         execution_window_risk='Stops monitored after all entry fills; drawdown between individual fills may be unobserved.')
     return (row,path_equity),dict(skip)
@@ -483,7 +514,9 @@ def replay_day(date,books,spots,c,equity,progress):
 def metrics(trades,days,capital,rate,path,unresolved=False,sizing_mode='capital'):
     closed=[t for t in trades if t['net_pnl'] is not None]
     pnls=np.array([t['net_pnl'] for t in closed],dtype=float)
-    daily_map={t['date']:t['net_pnl'] for t in closed}
+    daily_map=Counter()
+    for trade in closed:
+        daily_map[trade['date']]+=trade['net_pnl']
     daily=[];eq=capital
     for date in days:
         pnl=daily_map.get(date,0.)
@@ -541,6 +574,9 @@ def metrics(trades,days,capital,rate,path,unresolved=False,sizing_mode='capital'
 
 def run_experiment(c,data_root,cache,progress=lambda message,fraction:None):
     c=validate_request(c)
+    if c['strategy_family']=='trend':
+        from .trend import run_trend_experiment
+        return run_trend_experiment(c,data_root,cache,progress,metrics,VERSION)
     dates=[str(t.date()) for t in pd.date_range(c['start'],c['end'],tz='UTC')]
     if c['mode']=='sweep':
         grids=[[float(x.strip()) for x in c[k].split(',')] for k in ('grid_delta','grid_stop','grid_tp')]

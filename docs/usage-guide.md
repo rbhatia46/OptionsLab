@@ -15,7 +15,7 @@ A cached replay can finish in seconds. It processes historical events as fast as
 
 **Position size (BTC per leg) = 1** means a 1 BTC position in each standard leg. A short strangle requests one 1 BTC put and one 1 BTC call. An iron condor requests four 1 BTC legs. Custom leg ratios multiply the base BTC size. One contract represents 0.001 BTC.
 
-There is no research-capital input or capital-reserve eligibility check in the current UI. The normal **Full BTC size at a fresh observed price** model applies the requested quantity to a fresh observed option price, then applies slippage and fees. It ignores the size of the source print, so it is a price-path backtest rather than proof that 1 BTC could have filled live.
+There is no research-capital input or capital-reserve eligibility check in the current UI. The normal **Full BTC size at an observed price** model applies the requested quantity to an observed option price, then applies slippage and fees. It ignores the size of the source print, so it is a price-path backtest rather than proof that 1 BTC could have filled live. Entries and risk marks obey the normal freshness limit. If an exit cannot find a fresh print, it may use the latest already-observed trade inside **Exit price max age**; the ledger flags that fill and records the source time and age.
 
 Cash P&L is reported in USD: premium change per BTC × filled BTC, less costs. The chart starts at zero cumulative P&L. Dollar drawdown measures the drop from its previous peak. Percentage account returns, percentage drawdown, CAGR and Calmar are not applicable without an account-capital denominator. Sharpe and Sortino in BTC-size mode use daily dollar P&L, including zero-trade calendar days, with a zero benchmark and √365 annualization. These are fixed-size P&L ratios, not returns on a funded account. The headline ratios are hidden below 20 closed positions; 20 is only a display threshold, not evidence of reliability.
 
@@ -23,8 +23,8 @@ Previously saved runs retain their original sizing mode and calculations. Reusin
 
 ## 3. Start from a strategy idea
 
-1. In **Start with an idea**, choose a card, or click **Show all 9 ideas**.
-2. Filter by Neutral, With wings, Directional, Session study, or Experiments.
+1. In **Start with an idea**, choose a card, or click **Show all 13 ideas**.
+2. Filter by Neutral, With wings, Directional options, Trend following, Session study, or Experiments.
 3. Click **Load strategy**. It loads rules, dates and execution assumptions while preserving your current BTC quantity.
 4. Review the dates and session in the builder. Cards are templates, not preselected profitable strategies.
 5. Click **Run backtest**. Loading a card alone never starts a run.
@@ -40,6 +40,10 @@ Previously saved runs retain their original sizing mode and calculations. Reusin
 | Delta-selected wings | Sell 0.25-delta put/call and buy 0.10-delta put/call; ratio 1 each, tolerance 0.04. |
 | Weekend short strangle | Baseline strangle, weekends only, June 1–14, 2026. |
 | Delta × stop comparison | Four variants: delta 0.15/0.20 and stop 100%/150%; June 1–14, 70% development, minimum 3 development trades. |
+| 20/50 EMA trend · 15m | Long or short BTCUSD after the completed 20 EMA crosses the 50 EMA; execute at the next 15-minute bar open. |
+| Golden/death 50/200 SMA · 1h | Long after a 50-hour SMA is above the 200-hour SMA and short when below; next-hour-open execution. |
+| Supertrend 10 × 3 · 15m | Long or short from a 10-bar ATR Supertrend with multiplier 3 on 15-minute bars. |
+| Supertrend 10 × 3 · 1h | The same Supertrend rules on one-hour bars. |
 
 Standard cards generally use June 1–7, 2026, 0 DTE and 11:30–17:00 IST. They use the full-size observed-price proxy. To test historical execution capacity, choose **Show advanced settings → Fill model → Strict observed print volume**. In that mode, participation and the fill timeout apply; 1 BTC can produce partial fills or unresolved exposure.
 
@@ -89,17 +93,18 @@ Use durations in stages:
 | Expiry target (DTE) | 0 |
 | Call delta / Put delta / Delta tolerance | 0.20 / 0.20 / 0.08 |
 | OTM distance / Wing width | 1% / $1,000; ignored for a delta-selected strangle |
+| OTM tolerance | 1 percentage point; ignored for delta selection |
 | Entry retry window | 30 minutes |
 | Minimum credit | $1 total entry premium |
 | Max loss per trade / Portfolio delta cap | 0 / 0, both disabled |
 | Minimum IV / Maximum IV | 0% / 500% |
 | Min / Max trailing 1h move | −100% / 100%, filter disabled |
 | Premium slippage | 1% adverse per fill |
-| Fill model | Full BTC size at a fresh observed price |
+| Fill model | Full BTC size at an observed price |
 | Volume participation | Ignored in the selected fill model; used only by strict observed-volume replay |
 | Latency | 1 second |
 | Fill timeout | 600 seconds per attempt |
-| Option max age / Underlying max age | 300 / 60 seconds |
+| Entry/mark max age / Exit price max age / Underlying max age | 300 / 21,600 / 60 seconds |
 | Fee / Fee cap / Tax on fees | 0.01% notional / 3.5% premium / 18% |
 | Risk-free rate / Expiry time | 0% / 17:30 IST |
 | Mode | Single configuration |
@@ -108,7 +113,34 @@ Use durations in stages:
 
 The original small weekend example's −$0.34 came from 0.01 BTC per leg, two closed positions, ten excluded weekdays and two no-entry weekends. Its two net outcomes were approximately +$0.69 and −$1.03. The small sample and size explain the tiny P&L; it was not a meaningful strategy evaluation.
 
-## 5. Every strategy and session control
+## 5. Detailed futures example: 1 BTC 20/50 EMA trend
+
+1. Under **Start with an idea**, filter **Trend following** and load **20/50 EMA trend · 15m**.
+2. Confirm **Research family = BTCUSD futures trend following**, **Trend model = Moving-average crossover**, **Bar timeframe = 15m**, **Direction = Long + short**, **Average type = EMA**, **Fast average = 20**, and **Slow average = 50**.
+3. Set **Position size = 1 BTC**, **From = 2026-06-01**, and **Through = 2026-06-07**. Session times and option DTE/strike controls are marked **NOT USED** for this family.
+4. Leave **Profit target (% BTC move) = 0** and **Stop loss (% BTC move) = 0** to exit only on crossover flips and the final sample bar. Set either to a positive number to add a price-based exit.
+5. Click **Run backtest**. The engine aggregates the futures ticks into IST-aligned bars. The indicator is calculated from completed bars; an actionable signal enters at the following bar's open.
+6. Inspect **Trade ledger** for direction, signal completion, entry/exit times, fill prices, MAE/MFE, costs, and exit reason. **Risk & Greeks** shows futures bar risk rather than option Greeks.
+
+With the supplied archive and engine 1.4.0, this exact seven-day smoke check constructs **650 bars from 2,753,210 futures ticks**, closes **6 positions**, reports **$2,688.50 net P&L**, and **$6,974.80 maximum drawdown**. The preset's 1% slippage is intentionally severe for BTCUSD futures and materially dominates results; these figures are a reproducibility checksum, not an expected trading return. Changing source files, fees, slippage, dates, or code changes the numbers.
+
+The futures controls mean:
+
+| Control | Meaning |
+| --- | --- |
+| Trend model | Moving-average crossover or Supertrend. |
+| Bar timeframe | Fixed IST-aligned OHLC bars: 30s, 1/2/3/5/10/15/30/90m, 1/2/4/6/12h, 1D, 3D, or 1W. Weekly bars start Monday 00:00 IST. |
+| Direction | Take both signals, only positive/long signals, or only negative/short signals. |
+| Average type / Fast / Slow | SMA or EMA bar counts for crossover. Fast must be below slow. These fields are unused by Supertrend. |
+| Supertrend ATR period / multiplier | ATR lookback and band multiplier. These fields are unused by crossover. |
+| Profit target / Stop loss (% BTC move) | Optional distance from entry fill in the underlying futures price; zero disables. If both occur inside one bar, the stop wins. |
+| Position size | Fixed BTC futures quantity. P&L is linear USD price change × BTC quantity, less modeled costs. |
+| From / Through | Inclusive IST sample. Indicator warm-up happens inside this duration; long lookbacks need a longer sample. |
+| Slippage / Fee / Tax | Applied to every futures entry and exit. Option premium fee caps do not apply. |
+
+Futures trend positions can cross dates within the sample. They close on a signal change, enabled stop/target, or the final bar. The model does not include order-book capacity, funding, margin liquidation, or futures basis.
+
+## 6. Every strategy and session control
 
 The applicability banner below **Structure** updates as you edit the strategy. In simple mode, irrelevant controls are hidden. Under **Show advanced settings**, they remain visible but are dimmed and marked **NOT USED** with the exact reason, so a saved value cannot be mistaken for an active rule. Optional controls set to their disabling value are marked **OFF**. An amber banner identifies combinations the engine cannot run, such as an OTM-selected parameter grid.
 
@@ -122,6 +154,7 @@ The applicability banner below **Structure** updates as you edit the strategy. I
 | Delta tolerance | Maximum allowed difference between target and selected absolute delta. |
 | Expiry target (DTE) | Calendar days to expiry. Uses the nearest observed expiry on/after the target, within three days. All positions are still closed intraday. |
 | OTM distance (%) | Strike distance from underlying when OTM selection is active. |
+| OTM tolerance (%) | Maximum percentage-point difference between requested and actual OTM distance. A missing nearby strike is skipped instead of replaced by a much farther strike. |
 | Wing width (USD) | Strike-price distance to protective long options for standard spreads/condors, not a position amount. |
 | Custom leg Side / Type | Buy/sell and put/call for each of at most six legs. |
 | Custom absolute delta / Ratio | Per-leg target and integer quantity multiplier, 1–10. At least one short leg and positive entry credit are required. |
@@ -130,7 +163,7 @@ The applicability banner below **Structure** updates as you edit the strategy. I
 | Entry retry window | Retry selection each minute if no candidate qualifies, up to this many minutes. |
 | Trade days | Every day, weekdays, or weekends. |
 
-## 6. Exits and entry filters
+## 7. Exits and entry filters
 
 | Control | Meaning |
 | --- | --- |
@@ -142,16 +175,17 @@ The applicability banner below **Structure** updates as you edit the strategy. I
 | Minimum / Maximum IV (%) | Estimated IV bounds applied to every leg, including wings. |
 | Min / Max trailing 1h move (%) | Prior-hour underlying price change filter. −100 to +100 disables the filter. Insufficient prior data otherwise skips selection. |
 
-## 7. Execution and model settings
+## 8. Execution and model settings
 
 | Control | Meaning |
 | --- | --- |
-| Fill model | **Full BTC size** fills the requested quantity at a fresh observed option trade price and ignores source-print size. **Strict observed print volume** limits quantity to historical prints and can leave exposure unresolved. |
+| Fill model | **Full BTC size** fills the requested quantity at an observed option trade price and ignores source-print size. **Strict observed print volume** limits quantity to historical prints and can leave exposure unresolved. |
 | Premium slippage (%) | Adverse adjustment to each observed fill premium. |
 | Volume participation (%) | Strict-mode maximum fraction of each eligible trade print available to the simulated order, rounded down to whole contracts. Ignored by the full-size model. |
 | Latency (seconds) | Fills must occur strictly after decision plus this delay. |
 | Fill timeout (seconds) | Maximum fill window for each attempt. Incomplete entries are unwound; failed exits receive one retry. |
-| Option max age (seconds) | Reject stale option observations beyond this age. |
+| Entry/mark max age (seconds) | Reject stale option observations beyond this age for selection, entry, and risk monitoring. |
+| Exit price max age (seconds) | In full-size price mode only, maximum age of the latest already-observed trade allowed as an exit fallback. Evidence records the source time and age. |
 | Underlying max age (seconds) | Maximum age of the futures-price proxy. |
 | Fee (% notional / fill) | Rate on filled BTC × underlying price per fill. |
 | Fee cap (% premium) | Limits the fee to this fraction of filled premium. |
@@ -161,7 +195,7 @@ The applicability banner below **Structure** updates as you edit the strategy. I
 
 The archive contains trade prints, not an order book. The model uses buyer roles for eligible trade sides and futures as a spot proxy for inferred IV and Black–Scholes Greeks. There is no overnight carry, rolling, dynamic hedging, exchange liquidation or official settlement simulation. Risk is observed after entry completion and only at available fresh marks; reported drawdown may understate unobserved losses.
 
-## 8. Parameter experiments
+## 9. Parameter experiments
 
 | Control | Meaning |
 | --- | --- |
@@ -174,7 +208,7 @@ The archive contains trade prints, not an order book. The model uses buyer roles
 
 Use at least 10 calendar days, at most 36 combinations, and a standard delta-selected structure other than straddle. Custom/OTM/straddle delta sweeps are not supported. Missing development data, unresolved exposure or an undefined objective prevents a winner. Repeatedly tuning to the holdout compromises its independence. The comparison table retains descriptive ratios; evaluate sample size before interpreting them.
 
-## 9. Progress, errors and cancellation
+## 10. Progress, errors and cancellation
 
 The Run button immediately displays **Backtest running…**. During a run, the results panel shows a spinner, current phase/date, elapsed time and approximate remaining time. ETA starts as **estimating** while indexing or before enough progress exists. It can change as daily tick counts and liquidity differ. Completion is never delayed merely to make it look slower.
 
@@ -182,7 +216,7 @@ If an input is invalid, a message near the Run button names the field and opens 
 
 **Cancel run** requests cancellation at the next engine checkpoint. Wait for confirmation before starting another. Reloading the page reconnects to the active run, but does not automatically reopen a finished result.
 
-## 10. Clear results or delete saved runs
+## 11. Clear results or delete saved runs
 
 - **Clear result view** resets the visible output without deleting saved history or changing strategy inputs. Cancel an active run before clearing its progress.
 - **Run history → Delete** removes one finished, failed, cancelled or interrupted run.
@@ -190,7 +224,7 @@ If an input is invalid, a message near the Run button names the field and opens 
 - Deleted run JSON files move to **outputs/options_lab/deleted_runs**. Raw data and indexed cache are unaffected. To recover a deleted run, stop the server, move its JSON back into **outputs/options_lab/runs**, then restart.
 - **Save configuration** downloads the current rules; **Run history → Import configuration** loads a saved JSON file for review.
 
-## 11. Read the results
+## 12. Read the results
 
 **What this run actually tested** explains the sample, sizing, fills, rejected entries and P&L. Net P&L deducts fees and slippage. Dollar drawdown includes available intraday marks. Win rate counts closed positions, including partial-entry unwinds; complete-entry and unresolved counts are shown separately.
 
@@ -198,12 +232,12 @@ If an input is invalid, a message near the Run button names the field and opens 
 
 If exits remain unresolved, headline total P&L and ratios are unavailable; realized closed P&L is retained separately. Do not treat the displayed path as a fully closed portfolio. See [Methodology](methodology.md) for the engine contract.
 
-## 12. IST and stored timestamps
+## 13. IST and stored timestamps
 
 Session controls, run creation times, ledger timestamps, chart labels and displayed fill evidence use IST (UTC+05:30). Saved configurations, API requests and raw exports retain UTC for reproducibility; importing them converts their times to IST once. The guide therefore displays 11:30 entry, 17:00 exit and 17:30 expiry. Same-date intraday sessions from 05:30 IST onward are currently supported; earlier starts and sessions crossing IST midnight need a future cross-date replay extension. Expiry times after midnight refer to the following IST date when converted from the contract’s UTC expiry date.
 
-## 13. Relationship to the earlier research engine
+## 14. Relationship to the earlier research engine
 
-Options Lab can reproduce the main intraday short-strangle and iron-condor studies from `BitcoinOptionsAlgo`: fixed BTC per leg, delta or OTM selection, DTE, IST entry and exit, entry retry, wing distance, minimum credit, credit-based target and stop, fees, slippage, and per-trade audit data. It also adds saved runs, custom legs, IV/trend filters, Greeks, and chronological delta/stop/target comparisons.
+Options Lab can reproduce the main intraday short-strangle and iron-condor studies from `BitcoinOptionsAlgo`: fixed BTC per leg, delta or OTM selection, DTE, IST entry and exit, entry retry, wing distance, minimum credit, credit-based target and stop, fees, slippage, and per-trade audit data. It also adds saved runs, custom legs, IV/trend filters, Greeks, chronological delta/stop/target comparisons, and independent BTCUSD futures crossover/Supertrend studies.
 
-Some specialized rules from the earlier scripts are not yet controls in this UI: Supertrend-generated directional entries and flip exits, overnight hold-to-expiry settlement, minimum-hours-to-expiry selection, and a single experiment grid spanning entry time, OTM distance, and wing-width multipliers. Test those as separate UI configurations for now; do not assume the generic parameter experiment varies them.
+Some specialized rules from the earlier scripts are not yet controls in this UI: using a futures Supertrend signal to choose an option structure, overnight option hold-to-expiry settlement, minimum-hours-to-expiry selection, and a single experiment grid spanning entry time, OTM distance, and wing-width multipliers. Test those as separate UI configurations for now; do not assume the generic parameter experiment varies them.

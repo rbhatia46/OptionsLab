@@ -175,5 +175,41 @@
       "grid_stop": "100, 150",
       "min_trades": 3
     }
+  },
+  {
+    "id": "ema-crossover-15m",
+    "title": "20/50 EMA trend",
+    "category": "Trend following",
+    "description": "Follow medium-speed BTCUSD futures trends in both directions.",
+    "rules": ["15-minute IST bars · 20/50 EMA crossover", "Long above · short below · execute next bar open"],
+    "caution": "Crossover systems can churn in sideways markets; fees apply to every reversal.",
+    "overrides": {"strategy_family":"trend","name":"20/50 EMA trend · 15m","trend_strategy":"ma_crossover","trend_timeframe":"15m","trend_ma_type":"ema","trend_fast":20,"trend_slow":50,"trend_direction":"long_short","start":"2026-06-01","end":"2026-06-07","mode":"single"}
+  },
+  {
+    "id": "golden-death-1h",
+    "title": "Golden / death crossover",
+    "category": "Trend following",
+    "description": "Test the classic slow moving-average regime on BTCUSD futures.",
+    "rules": ["1-hour IST bars · 50/200 SMA", "Golden cross long · death cross short · next-bar execution"],
+    "caution": "A 200-bar warm-up is required and signals react slowly to reversals.",
+    "overrides": {"strategy_family":"trend","name":"Golden-death 50/200 SMA · 1h","trend_strategy":"ma_crossover","trend_timeframe":"1h","trend_ma_type":"sma","trend_fast":50,"trend_slow":200,"trend_direction":"long_short","start":"2026-06-01","end":"2026-06-30","mode":"single"}
+  },
+  {
+    "id": "supertrend-15m",
+    "title": "Supertrend 10 × 3",
+    "category": "Trend following",
+    "description": "Reverse with a standard ATR-based Supertrend signal.",
+    "rules": ["15-minute IST bars · ATR period 10 · multiplier 3", "Long + short · execute each flip at next bar open"],
+    "caution": "OHLC bars cannot reveal the exact sequence when a stop and target occur in one bar; the replay chooses the stop.",
+    "overrides": {"strategy_family":"trend","name":"Supertrend 10 × 3 · 15m","trend_strategy":"supertrend","trend_timeframe":"15m","supertrend_period":10,"supertrend_multiplier":3,"trend_direction":"long_short","start":"2026-06-01","end":"2026-06-30","mode":"single"}
+  },
+  {
+    "id": "supertrend-1h",
+    "title": "Slow Supertrend",
+    "category": "Trend following",
+    "description": "Use slower bars to reduce signal frequency and study broader moves.",
+    "rules": ["1-hour IST bars · ATR period 10 · multiplier 3", "Long + short · no fixed stop or target"],
+    "caution": "Fewer trades do not by themselves imply a more reliable result.",
+    "overrides": {"strategy_family":"trend","name":"Supertrend 10 × 3 · 1h","trend_strategy":"supertrend","trend_timeframe":"1h","supertrend_period":10,"supertrend_multiplier":3,"trend_direction":"long_short","start":"2026-06-01","end":"2026-06-30","mode":"single"}
   }
 ]

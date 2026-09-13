@@ -4,9 +4,9 @@ Validated locally on 2026-09-13 using Python 3.13, NumPy 2.5.3, pandas 3.0.5, an
 
 ## Automated checks
 
-`python -m unittest discover -s tests -v`: **16 tests passed**.
+`python -m unittest discover -s tests -v`: **31 tests passed**.
 
-Coverage includes put/call parity, implied-volatility inversion, numerical delta/gamma checks, strict as-of prices, immunity to future-only strike listings, whole-contract volume participation, side-aware fills, cash-flow/fee accounting, delayed stop fills, custom-leg signs, partial-entry unwinds, unresolved exposure, initial-capital drawdown, no-trade calendar dates, configuration validation, duplicate/invalid-row ingestion, cache reuse, missing source dates, and holdout-independent winner selection.
+Coverage includes put/call parity, implied-volatility inversion, numerical delta/gamma checks, strict as-of prices, bounded stale exit evidence, OTM-distance tolerance, immunity to future-only strike listings, whole-contract volume participation, side-aware fills, cash-flow/fee accounting, delayed stop fills, custom-leg signs, partial-entry unwinds, unresolved exposure, fixed-BTC metrics, initial-capital drawdown, no-trade calendar dates, configuration validation, history deletion, strategy presets, duplicate/invalid-row ingestion, cache reuse, missing source dates, holdout-independent winner selection, IST bar alignment, next-bar trend execution, and multiple futures exits per day.
 
 Python compilation and JavaScript syntax checks passed. The authored Markdown guide was rendered into the app's packaged HTML help pages.
 
@@ -17,6 +17,8 @@ Python compilation and JavaScript syntax checks passed. The authored Markdown gu
 - The four-variant June 1–14 delta/stop experiment completed and selected its winner on development dates only. Holdout results remained separately visible.
 - A stricter earlier size/time-window experiment produced partial entries and unresolved exposure; those positions were retained, later entries halted, and headline ratios suppressed.
 - Checked health, app, guide, methodology, preset, and asset endpoints; rejected invalid API input; reconciled JSON and CSV exports to the selected result.
+- Replayed the failing April 1–3, 2024 OTM strangle configuration from exported run `4ca435750579`: nearby-strike tolerance replaced the lopsided 73,200 call with a 70,200 call, the bounded exit-price fallback closed the remaining put from a 28.9-minute-old observed trade, and the result had one closed position with zero unresolved exposure.
+- Replayed both trend models over June 1–7, 2026: each constructed 650 IST-aligned 15-minute bars from 2,753,210 BTCUSD ticks. The 20/50 EMA smoke produced six closed positions; Supertrend 10 × 3 produced sixteen. These results verify pipeline mechanics, not performance.
 
 These are functionality checks, not strategy validation or a claim of trading profitability. Source data, actual trade evidence, and performance results remain in the local output directory and are excluded from this repository.
 

@@ -1,6 +1,6 @@
 # Options Lab
 
-A local Bitcoin options backtesting workbench for option sellers. Edit strategy conditions in a browser, replay the Desktop tick archive, inspect the results, and compare parameter grids without editing Python.
+A local Bitcoin options and BTCUSD futures research workbench. Edit strategy conditions in a browser, replay the Desktop tick archive, inspect the results, and compare ideas without editing Python.
 
 **This is an intraday research simulator using historical public trades, not an exchange execution simulator or a live trading system.** It does not silently settle an unclosed position or discard a partial fill.
 
@@ -32,10 +32,12 @@ Read the [complete usage guide](docs/usage-guide.md) for an exact 0.20-delta str
 
 - Short strangles, straddles, iron condors, call/put credit spreads, naked calls/puts, and custom 1–6-leg net-credit structures.
 - Absolute delta selection (for example, 0.20 delta calls and puts), OTM strike distance, wing widths, BTC quantity, and calendar DTE targets.
+- OTM-distance tolerance prevents a missing nearby quote from silently selecting a materially farther strike.
 - Intraday entry/exit times in IST, a minute-by-minute entry retry window, and weekday/weekend filters.
 - Per-leg IV bounds and a trailing one-hour underlying-return filter.
 - Portfolio profit targets and stop losses as a percentage of actual entry credit; optional cash-loss and net-delta exits.
-- A full-size observed-price model for strategy research, plus strict trade-volume participation for execution-capacity tests; both support latency, stale-price limits, adverse slippage, fees, premium fee caps, and fee tax.
+- A full-size observed-price model for strategy research, plus strict trade-volume participation for execution-capacity tests; both support latency, stale-price limits, adverse slippage, fees, premium fee caps, and fee tax. The price model can use a separately bounded older observed trade for exits and records its source time and age.
+- BTCUSD futures moving-average crossover and Supertrend studies on IST-aligned 30-second through weekly bars, with long/short direction controls, next-bar execution, optional price stops and targets, and fixed BTC size.
 - BTC quantity controls position size; the current UI has no account-capital constraint. Legacy capital-mode runs remain reproducible.
 - Up to 36 combinations of delta, stop, and target, ranked by development Sharpe, P&L, or dollar drawdown. The final chronological portion is reported separately as holdout.
 
@@ -51,7 +53,7 @@ The UI includes cumulative dollar P&L and observed drawdown, fixed-size daily-P&
 - **Full result + configuration** exports the entire experiment with source fingerprints and audit evidence.
 - **Data & coverage** inventories local source files; each run audits the selected dates and source contents.
 
-The example configuration is for functionality testing, not a recommended strategy. The default full-size price proxy ignores displayed print quantity. Strict volume mode can produce incomplete entries or unclosed exits for large orders; these are results, not errors to hide.
+The example configuration is for functionality testing, not a recommended strategy. The default full-size price proxy ignores displayed print quantity and may use the latest observed option trade within the configured exit-age bound when no fresh exit print exists. Strict volume mode can produce incomplete entries or unclosed exits for large orders; these are results, not errors to hide.
 
 ## Data contract
 
@@ -76,7 +78,7 @@ See [the methodology](docs/methodology.md) for the accounting, no-lookahead cont
 - Risk monitoring starts after entry completion. Drawdowns between fills and during stale intervals may be unobserved. Reported observed drawdown can understate actual risk.
 - Unclosed exposure halts subsequent entries and suppresses headline return/risk ratios. Cash flows and fill evidence are retained.
 - Margin is a research reserve, not exchange portfolio margin or liquidation modelling.
-- No overnight positions, expiry settlement, rolling, delta hedging, funding, option exercise, portfolio allocation across strategies, arbitrary natural-language strategy compilation, or train/retrain walk-forward simulation yet.
+- Options positions are intraday only. Futures trend positions can cross days inside the chosen sample and close on a signal change, stop, target, or final bar. Funding, liquidation, expiry settlement, rolling, delta hedging, portfolio allocation, natural-language strategy compilation, and walk-forward retraining are not modelled.
 - Short windows are unsuitable for ranking stable Sharpe ratios. A repeatedly inspected holdout is no longer an untouched test set.
 
 ## Validation
@@ -88,4 +90,4 @@ node --check app/options_lab/web/app.js  # optional JavaScript syntax check
 
 The tests exercise pricing identities, IV inversion, analytical Greeks against numerical sensitivities, as-of timing, whole-contract volume limits, fill costs, partial-entry unwinds, unresolved exposure, drawdown from starting capital, validation, and ingestion caching. Browser validation and real-data smoke results are documented in [validation notes](docs/validation.md).
 
-The Research workspace includes a nine-idea strategy library: one-click configurations for delta strangles, iron condors, directional credit spreads, an ATM straddle, custom delta wings, weekends, and a four-variant holdout comparison. Each loads rules for review while keeping your BTC size. The builder starts in simple mode with advanced settings available on demand. See the [usage guide](docs/usage-guide.md#3-start-from-a-strategy-idea).
+The Research workspace includes a 13-idea strategy library: nine options ideas plus 15-minute and one-hour moving-average/Supertrend futures templates. Each loads rules for review while keeping your BTC size. The builder starts in simple mode with advanced settings available on demand. See the [usage guide](docs/usage-guide.md#3-start-from-a-strategy-idea).

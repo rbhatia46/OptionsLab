@@ -67,6 +67,21 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(fills[0]['timestamp_ns'],self.t+SECOND)
         self.assertAlmostEqual(fills[0]['raw_price'],60.)
 
+    def test_price_proxy_exit_can_use_bounded_stale_observed_print(self):
+        book=self.book(roles={'maker':self.ticks([-7200],[60],[1]),'taker':self.ticks([-7200],[65],[1])})
+        c={**self.c,'execution_mode':'price','quantity_btc':1.,'exit_price_max_age_sec':21600.}
+        fills,left,_=fill_order(book,'buy',1.,self.t,self.spot,c,price_max_age_sec=c['exit_price_max_age_sec'],allow_future=False)
+        self.assertEqual(left,0)
+        self.assertEqual(fills[0]['price_source'],'bounded_stale_exit_price')
+        self.assertEqual(fills[0]['quote_age_sec'],7201.)
+
+    def test_price_proxy_exit_rejects_observation_older_than_bound(self):
+        book=self.book(roles={'maker':self.ticks([-22000],[60],[1]),'taker':self.ticks([-22000],[65],[1])})
+        c={**self.c,'execution_mode':'price','quantity_btc':1.,'exit_price_max_age_sec':21600.}
+        fills,left,_=fill_order(book,'buy',1.,self.t,self.spot,c,price_max_age_sec=c['exit_price_max_age_sec'],allow_future=False)
+        self.assertEqual(fills,[])
+        self.assertEqual(left,1.)
+
     def test_asof_never_uses_future_and_rejects_stale(self):
         ticks=self.ticks([-10,10],[100,999],[100,100])
         self.assertEqual(ticks.asof(self.t,20)[0],100)
@@ -100,6 +115,14 @@ class ReplayTests(unittest.TestCase):
         after,_=select_legs({book.symbol:book},self.spot,self.t,c)
         self.assertEqual(before['credit'],after['credit'])
         self.assertEqual(before['legs'][0]['greeks'],after['legs'][0]['greeks'])
+
+    def test_otm_selection_rejects_strike_beyond_distance_tolerance(self):
+        premium=price('C',60000,65000,6/24/365,0,.7)
+        book=self.book('C',65000,{'maker':self.ticks([-1],[premium],[1000]),'taker':self.ticks([],[],[])})
+        c={**self.c,'structure':'short_call','selection':'otm','otm_pct':1.,'otm_tolerance_pct':1.,'min_credit':0.}
+        candidate,reason=select_legs({book.symbol:book},self.spot,self.t,c)
+        self.assertIsNone(candidate)
+        self.assertEqual(reason,'no_eligible_short_leg')
 
     def test_future_only_atm_strike_does_not_change_straddle(self):
         c={**self.c,'structure':'straddle','min_credit':0.}
