@@ -110,6 +110,8 @@ The original small weekend example's −$0.34 came from 0.01 BTC per leg, two cl
 
 ## 5. Every strategy and session control
 
+The applicability banner below **Structure** updates as you edit the strategy. In simple mode, irrelevant controls are hidden. Under **Show advanced settings**, they remain visible but are dimmed and marked **NOT USED** with the exact reason, so a saved value cannot be mistaken for an active rule. Optional controls set to their disabling value are marked **OFF**. An amber banner identifies combinations the engine cannot run, such as an OTM-selected parameter grid.
+
 | Control | Meaning |
 | --- | --- |
 | Strategy name | Your label in saved run history. |
