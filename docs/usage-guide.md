@@ -41,7 +41,7 @@ Previously saved runs retain their original sizing mode and calculations. Reusin
 | Weekend short strangle | Baseline strangle, weekends only, June 1–14, 2026. |
 | Delta × stop comparison | Four variants: delta 0.15/0.20 and stop 100%/150%; June 1–14, 70% development, minimum 3 development trades. |
 
-Standard cards generally use June 1–7, 2026, 0 DTE, 06:00–11:30 UTC, 10% participation and a five-minute fill timeout. At 1 BTC these strict liquidity assumptions may yield incomplete fills. Inspect the outcome rather than treating a completed computation as a completed position.
+Standard cards generally use June 1–7, 2026, 0 DTE, 11:30–17:00 IST, 10% participation and a five-minute fill timeout. At 1 BTC these strict liquidity assumptions may yield incomplete fills. Inspect the outcome rather than treating a completed computation as a completed position.
 
 ## 4. Detailed running example: 1 BTC ATM straddle
 
@@ -50,7 +50,7 @@ This is a one-day execution walkthrough, not a profitability or robustness study
 1. Click **Load the guide example** in the app header. Unlike library cards, this button deliberately sets the exact example, including **1 BTC** quantity.
 2. Confirm **Strategy name = Guide · 1 BTC ATM straddle**.
 3. Confirm **Structure = Short straddle** and **Position size (BTC per leg) = 1**. Both put and call use the same near-ATM strike; delta targets do not select that strike.
-4. Under **Session & sample**, set **From = 2026-06-01**, **Through = 2026-06-01**, **Entry decision = 06:00**, **Time exit = 11:30**, and **Trade days = Every day**. Times are UTC: 11:30 IST entry and 17:00 IST exit.
+4. Under **Session & sample**, set **From = 2026-06-01**, **Through = 2026-06-01**, **Entry decision = 11:30**, **Time exit = 17:00**, and **Trade days = Every day**. All displayed session times are IST.
 5. Under **Exits & risk**, confirm **Profit target = 25** and **Stop loss = 100**. These are percentages of net entry credit, not a percentage change in the BTC price.
 6. Click **Show advanced settings**. The exact additional values are below; the guide button has already populated them.
 7. Click **Run backtest**. The button changes immediately, a spinner appears, and the status shows the current operation, elapsed time and approximate ETA once there is enough progress to estimate it.
@@ -75,7 +75,7 @@ This is a one-day execution walkthrough, not a profitability or robustness study
 | Fill timeout | 600 seconds per attempt |
 | Option max age / Underlying max age | 300 / 60 seconds |
 | Fee / Fee cap / Tax on fees | 0.01% notional / 3.5% premium / 18% |
-| Risk-free rate / Expiry hour | 0% / 12 UTC |
+| Risk-free rate / Expiry time | 0% / 17:30 IST |
 | Mode | Single configuration |
 | Grid deltas / Stops / Targets | 0.15, 0.2, 0.25 / 100, 150 / 50; ignored in single mode |
 | Objective / Development sample / Minimum trades | Sharpe / 70% / 5; ignored in single mode |
@@ -98,7 +98,7 @@ The original small weekend example's −$0.34 came from 0.01 BTC per leg, two cl
 | Custom leg Side / Type | Buy/sell and put/call for each of at most six legs. |
 | Custom absolute delta / Ratio | Per-leg target and integer quantity multiplier, 1–10. At least one short leg and positive entry credit are required. |
 | From / Through | Inclusive dates. Missing days are explicitly reported. |
-| Entry decision / Time exit | UTC times. Orders fill after decisions and configured latency. |
+| Entry decision / Time exit | IST times. Orders fill after decisions and configured latency. |
 | Entry retry window | Retry selection each minute if no candidate qualifies, up to this many minutes. |
 | Trade days | Every day, weekdays, or weekends. |
 
@@ -128,7 +128,7 @@ The original small weekend example's −$0.34 came from 0.01 BTC per leg, two cl
 | Fee cap (% premium) | Limits the fee to this fraction of filled premium. |
 | Tax on fees (%) | Additional percentage of the fee. Historical fee schedules are not in the data. |
 | Risk-free rate (%) | Black–Scholes pricing input. Fixed-BTC P&L ratios use zero benchmark because no cash account is modelled. |
-| Expiry hour (UTC) | Contract expiry assumption; all exit attempts must finish before expiry or day end. |
+| Expiry time (IST) | Contract expiry assumption; all exit attempts must finish before expiry or day end. |
 
 The archive contains trade prints, not an order book. The model uses buyer roles for eligible trade sides and futures as a spot proxy for inferred IV and Black–Scholes Greeks. There is no overnight carry, rolling, dynamic hedging, exchange liquidation or official settlement simulation. Risk is observed after entry completion and only at available fresh marks; reported drawdown may understate unobserved losses.
 
@@ -168,3 +168,7 @@ If an input is invalid, a message near the Run button names the field and opens 
 **Overview** includes profit factor, average/best/worst trade, fees, slippage and monthly realized P&L. **Trade ledger** shows positions, legs and individual fills. **Risk & Greeks** shows signed, BTC-scaled Greeks, excursions, mark coverage and the legacy reserve estimate as a diagnostic only. **Compare** shows development and holdout variants. **Audit** records assumptions, missing data, rejected-entry attempts and source hashes. Rejection counters count attempts, not necessarily distinct days.
 
 If exits remain unresolved, headline total P&L and ratios are unavailable; realized closed P&L is retained separately. Do not treat the displayed path as a fully closed portfolio. See [Methodology](methodology.md) for the engine contract.
+
+## 12. IST and stored timestamps
+
+Session controls, run creation times, ledger timestamps, chart labels and displayed fill evidence use IST (UTC+05:30). Saved configurations, API requests and raw exports retain UTC for reproducibility; importing them converts their times to IST once. The guide therefore displays 11:30 entry, 17:00 exit and 17:30 expiry. Same-date intraday sessions from 05:30 IST onward are currently supported; earlier starts and sessions crossing IST midnight need a future cross-date replay extension. Expiry times after midnight refer to the following IST date when converted from the contract’s UTC expiry date.

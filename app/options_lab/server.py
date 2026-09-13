@@ -143,7 +143,7 @@ class Handler(BaseHTTPRequestHandler):
                 if job['status']=='running' and job.get('started_at'):
                     clean['elapsed_seconds']=round((datetime.now(timezone.utc)-datetime.fromisoformat(job['started_at'])).total_seconds(),1)
                 return self.respond(clean, download=f"{job['id']}.json" if path.endswith('/export') else None)
-            static = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/favicon.svg': 'favicon.svg', '/guide': 'guide.html', '/methodology': 'methodology.html'}
+            static = {'/': 'index.html', '/app.js': 'app.js', '/time.js': 'time.js', '/style.css': 'style.css', '/favicon.svg': 'favicon.svg', '/guide': 'guide.html', '/methodology': 'methodology.html'}
             if path in static:
                 p = WEB / static[path]
                 return self.respond(p.read_bytes(), content_type=mimetypes.guess_type(p.name)[0] or 'text/plain')
