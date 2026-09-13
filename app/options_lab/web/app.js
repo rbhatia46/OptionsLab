@@ -9,6 +9,7 @@ function showView(id){document.querySelectorAll('.view').forEach(e=>e.hidden=e.i
 document.querySelectorAll('[data-view]').forEach(e=>e.addEventListener('click',()=>showView(e.dataset.view)));
 function readConfig(){const f=new FormData($('#config-form')), config={};for(const [key,val] of f){const element=$(`[name="${key}"]`);config[key]=(element.type==='number'||['capital','margin_pct','allocation_pct'].includes(key))?Number(val):val;}config.entry_time=LabTime.inputToUtc(config.entry_time);config.exit_time=LabTime.inputToUtc(config.exit_time);const expiry=LabTime.shift(config.expiry_hour,-330);if(!expiry.endsWith(':00'))throw Error('Expiry must be on an IST half hour, such as 17:30.');config.expiry_hour=Number(expiry.slice(0,2));config.sizing_mode='btc';if(config.objective==='calmar')config.objective='sharpe';if(config.structure==='custom')config.legs=JSON.parse(config.legs);else delete config.legs;return config;}
 function applyConfig(config){if(!config||typeof config!=='object'||Array.isArray(config))throw Error('Choose a saved configuration JSON object.');const names=new Set(Array.from($('#config-form').elements).map(e=>e.name));for(const k of Object.keys(config))if(!names.has(k))throw Error('Unknown configuration field: '+k);if(config.legs!==undefined&&(!Array.isArray(config.legs)||config.legs.length>6))throw Error('Custom legs must be an array of up to six rows.');for(const [k,v] of Object.entries(config)){const el=$(`[name="${k}"]`);if(el)el.value=['entry_time','exit_time'].includes(k)?LabTime.shift(v,330):k==='expiry_hour'?LabTime.shift(String(v).padStart(2,'0')+':00',330):typeof v==='object'?JSON.stringify(v):(k==='objective'&&v==='calmar'?'sharpe':v);}renderLegs();updateStructure();updateSimpleMode();saveDraft();}
+function sessionCounts(start,end,days){let eligible=0,total=0;for(let t=Date.parse(start+'T00:00:00Z'),last=Date.parse(end+'T00:00:00Z');Number.isFinite(t)&&t<=last&&total<1096;t+=86400000){total++;const weekend=[0,6].includes(new Date(t).getUTCDay());if(days==='all'||(days==='weekends')===weekend)eligible++;}return {eligible,total};}
 function updateStructure(){const structure=$('#structure').value;$('#custom-legs').hidden=structure!=='custom';$('#put-badge').textContent='−'+num($('[name="put_delta"]').value)+' Δ';$('#call-badge').textContent='+'+num($('[name="call_delta"]').value)+' Δ';$('.leg-diagram').hidden=structure!=='strangle';}
 $('#config-form').addEventListener('input',()=>{updateStructure();updateSimpleMode();saveDraft();});
 let advancedSettings = false;
@@ -37,8 +38,7 @@ function updateSimpleMode(){
   }
   const qty=Number($('[name="quantity_btc"]').value);
   const start=$('[name="start"]').value,end=$('[name="end"]').value,days=$('[name="days"]').value;
-  let count=0,total=0;
-  for(let t=Date.parse(start+'T00:00:00Z'),last=Date.parse(end+'T00:00:00Z');Number.isFinite(t)&&t<=last&&total<1096;t+=86400000){total++;const weekend=[0,6].includes(new Date(t).getUTCDay());if(days==='all'||(days==='weekends')===weekend)count++;}
+  const {eligible:count,total}=sessionCounts(start,end,days);
   const legs=structure==='custom'?JSON.parse($('[name="legs"]').value):null;
   const shortCount=legs?legs.filter(l=>l.side==='sell').reduce((n,l)=>n+l.ratio,0):['strangle','straddle','condor'].includes(structure)?2:1;
   const execution=$('[name="execution_mode"]').value;
@@ -86,7 +86,7 @@ document.querySelectorAll('[data-idea-filter]').forEach(b=>b.onclick=()=>{
 });
 $('#more-ideas').onclick=()=>{showAllIdeas=!showAllIdeas;renderIdeas();};
 $('#toggle-ideas').onclick=()=>{const body=$('#idea-body');body.hidden=!body.hidden;$('#toggle-ideas').textContent=body.hidden?'Browse ideas':'Hide ideas';$('#toggle-ideas').setAttribute('aria-expanded',String(!body.hidden));};
-async function loadExample(){const config=await api('/api/presets/one-btc-example');applyConfig(config);showView('workspace');notice('1 BTC example loaded: June 1 ATM straddle using the full-size observed-price proxy. Click Run backtest.');}
+async function loadExample(){const config=await api('/api/presets/one-btc-example');applyConfig(config);showView('workspace');notice('1 BTC example loaded: June 1 20-delta short strangle, Every day, using the full-size observed-price proxy. Click Run backtest.');}
 $('#load-example').onclick=()=>loadExample().catch(e=>notice(e.message));
 $('#save-config').onclick=()=>{try{const blob=new Blob([JSON.stringify(readConfig(),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='options-lab-config.json';a.click();URL.revokeObjectURL(a.href);notice('Configuration downloaded. Import it from Run history to reuse it.');}catch(e){notice(e.message);}};
 $('#import-button').onclick=()=>$('#import-file').click();
@@ -113,6 +113,8 @@ $('#config-form').onsubmit=async e=>{
  e.preventDefault();if(submitting||['queued','running'].includes(activeJob?.status)){feedback('A backtest is already active. Follow progress or cancel it.');return;}
  const invalid=Array.from($('#config-form').elements).find(el=>el.willValidate&&!el.validity.valid);
  if(invalid){advancedSettings=true;$('#advanced-toggle').textContent='Hide advanced settings';$('#advanced-toggle').setAttribute('aria-pressed','true');updateSimpleMode();const detail=invalid.closest('details');if(detail)detail.open=true;invalid.closest('label').hidden=false;feedback(`Please fix ${invalid.closest('label').textContent.trim()}: ${invalid.validationMessage}`,true);invalid.focus();invalid.reportValidity();return;}
+ const sessions=sessionCounts($('[name="start"]').value,$('[name="end"]').value,$('[name="days"]').value);
+ if(!sessions.eligible){const message=`Trade days = ${$('[name="days"] option:checked').textContent} excludes every selected date. Choose Every day or change the date range.`;feedback(message,true);notice(message);$('[name="days"]').focus();return;}
  submitting=true;activeJob=null;feedback('Starting backtest…');notice('Submitting your configuration…');setBusy(true);$('#progress-label').textContent='Starting backtest…';$('#progress-bar').style.width='0%';$('#progress-time').textContent='Connecting to local engine…';
  try{const job=await api('/api/runs',readConfig());localStorage.setItem('optionsLabActive',job.id);await poll(job.id);}
  catch(e){setBusy(false);feedback('Could not start: '+e.message+' Check the local server and try again.',true);notice('Could not start backtest: '+e.message);}

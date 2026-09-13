@@ -65,6 +65,11 @@ def validate_request(payload):
     start,end=pd.Timestamp(c['start'],tz='UTC'),pd.Timestamp(c['end'],tz='UTC')
     if start>end or (end-start).days>1095:
         raise ValueError('Select an ordered date range no longer than three years.')
+    calendar_days=pd.date_range(start,end,freq='D')
+    eligible_days=sum(c['days']=='all' or (c['days']=='weekdays' and day.dayofweek<5) or
+                      (c['days']=='weekends' and day.dayofweek>=5) for day in calendar_days)
+    if not eligible_days:
+        raise ValueError(f'Trade days = {c["days"]} excludes every date from {c["start"]} through {c["end"]}. Change Trade days or the date range.')
     for key in ('entry_time','exit_time'):
         if not isinstance(c[key],str) or not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d',c[key]):
             raise ValueError(f'{key} must be a UTC HH:MM time.')

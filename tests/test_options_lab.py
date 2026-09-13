@@ -188,6 +188,11 @@ class ReplayTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_request(patch)
 
+    def test_day_filter_cannot_exclude_entire_sample(self):
+        with self.assertRaisesRegex(ValueError,'excludes every date'):
+            validate_request(dict(start='2026-06-01',end='2026-06-01',days='weekends'))
+        self.assertEqual(validate_request(dict(start='2026-06-06',end='2026-06-06',days='weekends'))['days'],'weekends')
+
 
 class IngestTests(unittest.TestCase):
     def test_dedup_invalid_dates_hash_and_cache_reuse(self):
