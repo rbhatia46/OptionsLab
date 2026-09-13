@@ -7,10 +7,10 @@
 3. Each leg requires a fresh entry-side print. Use the latest underlying tick at or before that option print to infer volatility; use the latest fresh underlying at the decision to evaluate its Greeks.
 4. Apply selection, IV/return filters, estimated net credit, using only this past information. Capital-mode requests also apply collateral eligibility; the current UI uses fixed BTC sizing without that filter.
 5. Submit independent leg orders. A sell uses maker-buyer prints; a buy uses taker-buyer prints. Only prints strictly after decision plus latency qualify.
-6. Per-print capacity is `floor(contracts × participation_fraction)`, converted with `0.001 BTC / contract`. Sizes are whole contracts. Weighted fill prices include adverse premium slippage. Every fill incurs the configured fee and tax.
+6. The normal full-size price proxy fills requested BTC at the freshest observed option print available after latency, regardless of buyer role or source-print size. The strict volume mode instead uses side-aware prints; capacity is `floor(contracts × participation_fraction)`, converted with `0.001 BTC / contract`. Both modes apply adverse premium slippage, fees and tax.
 7. On complete entry, monitor fresh liquidation-side marks at each relevant option event. When delta exits are enabled, underlying trade events also trigger checks. Net liquidation P&L includes all entry fees, adverse closing slippage, and estimated closing fees.
 8. A trigger submits close orders after latency; fills may be worse than the trigger. A partially filled exit gets one additional fill window. No post-expiry or next-session prints can fill an order.
-9. An incomplete entry is not erased: cancel the remainder at its timeout and attempt to unwind the filled exposure. A failed unwind/exit is an unresolved position and halts later entries.
+9. In strict volume mode, an incomplete entry is not erased: cancel the remainder at its timeout and attempt to unwind the filled exposure. A failed unwind/exit is an unresolved position and halts later entries. The full-size proxy can still be unresolved when no sufficiently fresh option or underlying print exists.
 
 One entry opportunity window and at most one entered position per date; no re-entry after a filled position. The model does not simulate stops during the initial leg-filling interval or reconcile a missed stop retrospectively.
 

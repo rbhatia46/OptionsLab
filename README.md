@@ -35,7 +35,7 @@ Read the [complete usage guide](docs/usage-guide.md) for an exact 0.20-delta str
 - Intraday entry/exit times in UTC, a minute-by-minute entry retry window, and weekday/weekend filters.
 - Per-leg IV bounds and a trailing one-hour underlying-return filter.
 - Portfolio profit targets and stop losses as a percentage of actual entry credit; optional cash-loss and net-delta exits.
-- Configurable latency, trade-volume participation, fill timeout, stale-price limits, adverse slippage, fees, premium fee caps, and fee tax.
+- A full-size observed-price model for strategy research, plus strict trade-volume participation for execution-capacity tests; both support latency, stale-price limits, adverse slippage, fees, premium fee caps, and fee tax.
 - BTC quantity controls position size; the current UI has no account-capital constraint. Legacy capital-mode runs remain reproducible.
 - Up to 36 combinations of delta, stop, and target, ranked by development Sharpe, P&L, or dollar drawdown. The final chronological portion is reported separately as holdout.
 
@@ -51,7 +51,7 @@ The UI includes cumulative dollar P&L and observed drawdown, fixed-size daily-P&
 - **Full result + configuration** exports the entire experiment with source fingerprints and audit evidence.
 - **Data & coverage** inventories local source files; each run audits the selected dates and source contents.
 
-The example configuration is for functionality testing, not a recommended strategy or capital allocation. Low participation and large orders can produce incomplete entries or unclosed exits; these are results, not errors to hide.
+The example configuration is for functionality testing, not a recommended strategy. The default full-size price proxy ignores displayed print quantity. Strict volume mode can produce incomplete entries or unclosed exits for large orders; these are results, not errors to hide.
 
 ## Data contract
 

@@ -57,6 +57,16 @@ class ReplayTests(unittest.TestCase):
         self.assertAlmostEqual(sum(f['price']*f['quantity_btc'] for f in fills),10.395)
         self.assertAlmostEqual(fill_cash(fills),10.395-sum(f['fee'] for f in fills))
 
+    def test_price_proxy_fills_full_btc_from_fresh_observed_print(self):
+        book=self.book(roles={'maker':self.ticks([-1],[60],[1]),'taker':self.ticks([-2],[65],[1])})
+        c={**self.c,'execution_mode':'price','quantity_btc':1.}
+        fills,left,_=fill_order(book,'sell',1.,self.t,self.spot,c)
+        self.assertEqual(left,0)
+        self.assertEqual(len(fills),1)
+        self.assertEqual(fills[0]['quantity_btc'],1.)
+        self.assertEqual(fills[0]['timestamp_ns'],self.t+SECOND)
+        self.assertAlmostEqual(fills[0]['raw_price'],60.)
+
     def test_asof_never_uses_future_and_rejects_stale(self):
         ticks=self.ticks([-10,10],[100,999],[100,100])
         self.assertEqual(ticks.asof(self.t,20)[0],100)

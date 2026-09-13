@@ -15,7 +15,7 @@ A cached replay can finish in seconds. It processes historical events as fast as
 
 **Position size (BTC per leg) = 1** means a 1 BTC position in each standard leg. A short strangle requests one 1 BTC put and one 1 BTC call. An iron condor requests four 1 BTC legs. Custom leg ratios multiply the base BTC size. One contract represents 0.001 BTC.
 
-There is no research-capital input or capital-reserve eligibility check in the current UI. Increasing BTC size requests more contracts; it does not automatically increase available historical liquidity. Partial fills and unresolved exits remain visible.
+There is no research-capital input or capital-reserve eligibility check in the current UI. The normal **Full BTC size at a fresh observed price** model applies the requested quantity to a fresh observed option price, then applies slippage and fees. It ignores the size of the source print, so it is a price-path backtest rather than proof that 1 BTC could have filled live.
 
 Cash P&L is reported in USD: premium change per BTC × filled BTC, less costs. The chart starts at zero cumulative P&L. Dollar drawdown measures the drop from its previous peak. Percentage account returns, percentage drawdown, CAGR and Calmar are not applicable without an account-capital denominator. Sharpe and Sortino in BTC-size mode use daily dollar P&L, including zero-trade calendar days, with a zero benchmark and √365 annualization. These are fixed-size P&L ratios, not returns on a funded account. The headline ratios are hidden below 20 closed positions; 20 is only a display threshold, not evidence of reliability.
 
@@ -41,11 +41,11 @@ Previously saved runs retain their original sizing mode and calculations. Reusin
 | Weekend short strangle | Baseline strangle, weekends only, June 1–14, 2026. |
 | Delta × stop comparison | Four variants: delta 0.15/0.20 and stop 100%/150%; June 1–14, 70% development, minimum 3 development trades. |
 
-Standard cards generally use June 1–7, 2026, 0 DTE, 11:30–17:00 IST, 10% participation and a five-minute fill timeout. At 1 BTC these strict liquidity assumptions may yield incomplete fills. Inspect the outcome rather than treating a completed computation as a completed position.
+Standard cards generally use June 1–7, 2026, 0 DTE and 11:30–17:00 IST. They use the full-size observed-price proxy. To test historical execution capacity, choose **Show advanced settings → Fill model → Strict observed print volume**. In that mode, participation and the fill timeout apply; 1 BTC can produce partial fills or unresolved exposure.
 
 ## 4. Detailed running example: 1 BTC ATM straddle
 
-This is a one-day execution walkthrough, not a profitability or robustness study. It uses **100% participation**, an optimistic assumption that permits consuming all eligible printed volume. It does not simulate competition for that volume. Do not treat its fills as evidence of achievable live execution.
+This is a one-day workflow walkthrough, not a profitability or robustness study. It uses the full-size observed-price proxy. Do not treat its fills as evidence that the historical market had enough depth for a live 1 BTC order.
 
 1. Click **Load the guide example** in the app header. Unlike library cards, this button deliberately sets the exact example, including **1 BTC** quantity.
 2. Confirm **Strategy name = Guide · 1 BTC ATM straddle**.
@@ -70,7 +70,8 @@ This is a one-day execution walkthrough, not a profitability or robustness study
 | Minimum IV / Maximum IV | 0% / 500% |
 | Min / Max trailing 1h move | −100% / 100%, filter disabled |
 | Premium slippage | 1% adverse per fill |
-| Volume participation | 100%, optimistic execution demonstration |
+| Fill model | Full BTC size at a fresh observed price |
+| Volume participation | Ignored in the selected fill model; used only by strict observed-volume replay |
 | Latency | 1 second |
 | Fill timeout | 600 seconds per attempt |
 | Option max age / Underlying max age | 300 / 60 seconds |
@@ -118,8 +119,9 @@ The original small weekend example's −$0.34 came from 0.01 BTC per leg, two cl
 
 | Control | Meaning |
 | --- | --- |
+| Fill model | **Full BTC size** fills the requested quantity at a fresh observed option trade price and ignores source-print size. **Strict observed print volume** limits quantity to historical prints and can leave exposure unresolved. |
 | Premium slippage (%) | Adverse adjustment to each observed fill premium. |
-| Volume participation (%) | Maximum fraction of each eligible trade print available to the simulated order, rounded down to whole contracts. 100% is optimistic. |
+| Volume participation (%) | Strict-mode maximum fraction of each eligible trade print available to the simulated order, rounded down to whole contracts. Ignored by the full-size model. |
 | Latency (seconds) | Fills must occur strictly after decision plus this delay. |
 | Fill timeout (seconds) | Maximum fill window for each attempt. Incomplete entries are unwound; failed exits receive one retry. |
 | Option max age (seconds) | Reject stale option observations beyond this age. |

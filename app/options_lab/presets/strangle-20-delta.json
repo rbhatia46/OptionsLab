@@ -1,4 +1,5 @@
 {
+  "execution_mode": "price",
   "name": "Guide example \u00b7 20-delta short strangle",
   "structure": "strangle",
   "selection": "delta",

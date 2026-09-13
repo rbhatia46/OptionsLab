@@ -1,4 +1,5 @@
 {
+  "execution_mode": "price",
   "sizing_mode": "btc",
   "name": "Guide \u00b7 1 BTC ATM straddle",
   "structure": "straddle",

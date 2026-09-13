@@ -13,9 +13,9 @@ import pandas as pd
 from .data import index_source, load_day
 from .pricing import YEAR_NS, implied_vol, greeks
 
-VERSION = 'options-lab-1.2.0'
+VERSION = 'options-lab-1.3.0'
 SECOND = 1_000_000_000
-DEFAULTS = dict(sizing_mode='capital', name='20Δ short strangle', structure='strangle', selection='delta', dte=0,
+DEFAULTS = dict(sizing_mode='capital', execution_mode='volume', name='20Δ short strangle', structure='strangle', selection='delta', dte=0,
     call_delta=.2, put_delta=.2, delta_tolerance=.08, otm_pct=1., wing_width=1000., quantity_btc=.01,
     start='2026-06-01', end='2026-06-07', entry_time='06:00', exit_time='11:30', entry_window_min=30,
     days='all', take_profit_pct=50., stop_loss_pct=100., min_credit=1., max_loss_usd=0., delta_exit=0.,
@@ -50,7 +50,8 @@ def validate_request(payload):
         c[key] = int(c[key])
     if abs(c['quantity_btc']/.001-round(c['quantity_btc']/.001))>1e-6:
         raise ValueError('BTC quantity must be a multiple of the 0.001 BTC contract.')
-    choices = dict(sizing_mode=['capital','btc'], structure=['strangle','straddle','condor','call_spread','put_spread','short_call','short_put','custom'],
+    choices = dict(sizing_mode=['capital','btc'], execution_mode=['price','volume'],
+                   structure=['strangle','straddle','condor','call_spread','put_spread','short_call','short_put','custom'],
                    selection=['delta','otm'],days=['all','weekdays','weekends'],mode=['single','sweep'],
                    objective=['sharpe','net_pnl','calmar','drawdown'])
     for key,values in choices.items():
@@ -271,9 +272,38 @@ def select_legs(books,spots,t,c):
 
 
 def fill_order(book,side,qty,decision,spots,c,deadline=None):
-    ticks=book.roles[role(side)]
     begin=decision+int(c['latency_sec']*SECOND)
     end=min(begin+int(c['fill_timeout_sec']*SECOND),book.expiry-1,deadline if deadline else book.expiry-1)
+    if c['execution_mode']=='price':
+        # Full-size research proxy: use the freshest print already known when
+        # latency expires, regardless of buyer role. If none is fresh, use the
+        # first subsequent print inside the fill window. Size is intentionally
+        # ignored; strict capacity testing is the separate volume mode.
+        quotes=[]
+        for source in book.roles.values():
+            quote=source.asof(begin,c['max_age_sec'])
+            if quote is not None:
+                quotes.append((int(quote[1]),float(quote[0])))
+        if quotes:
+            _,raw=max(quotes,key=lambda q:q[0]);t=begin
+        else:
+            future=[]
+            for source in book.roles.values():
+                i=int(np.searchsorted(source.t,begin,side='right'))
+                if i<len(source.t) and int(source.t[i])<=end:
+                    future.append((int(source.t[i]),float(source.p[i])))
+            if not future:
+                return [],qty,end
+            t,raw=min(future,key=lambda q:q[0])
+        underlying=spots.asof(t,c['spot_age_sec'])
+        if underlying is None:
+            return [],qty,end
+        price=raw*(1+(-1 if side=='sell' else 1)*c['slippage_pct']/100)
+        fee=min(qty*underlying[0]*c['fee_pct']/100,qty*price*c['fee_cap_pct']/100)*(1+c['tax_pct']/100)
+        fill=dict(timestamp_ns=t,time=iso(t),side=side,quantity_btc=qty,price=price,raw_price=raw,
+                  fee=fee,slippage=qty*abs(price-raw),underlying=underlying[0])
+        return [fill],0.,t
+    ticks=book.roles[role(side)]
     first=int(np.searchsorted(ticks.t,begin,side='right'))
     last=int(np.searchsorted(ticks.t,end,side='right'))
     remaining=qty
@@ -439,7 +469,9 @@ def replay_day(date,books,spots,c,equity,progress):
         mae=minp,mfe=maxp,mark_events=observations,fresh_marks=fresh,invalid_greek_events=invalid_greeks,
         mark_coverage_pct=100*fresh/observations if observations else None,
         entry_greeks=greek_at_entry,legs=serialized,planned_legs=planned,unresolved=unresolved,path=compact,
-        execution_model='independent side-aware trade-print fills',execution_window_risk='Stops monitored after all entry fills; drawdown between individual fills may be unobserved.')
+        execution_model=('full requested BTC at a fresh observed option price' if c['execution_mode']=='price'
+                         else 'independent side-aware volume-constrained trade-print fills'),
+        execution_window_risk='Stops monitored after all entry fills; drawdown between individual fills may be unobserved.')
     return (row,path_equity),dict(skip)
 
 
