@@ -47,12 +47,12 @@ def persist(job):
 def worker(job):
     from app.options_lab.engine import run_experiment
     try:
-        job.update(status='running')
+        job.update(status='running', started_at=datetime.now(timezone.utc).isoformat())
         started = time.monotonic()
         def progress(message, fraction):
             if job['cancel'].is_set():
                 raise InterruptedError('Cancelled. Completed results are retained only after a full run.')
-            job.update(message=message, progress=round(fraction, 4))
+            job.update(message=message, progress=max(job.get('progress',0),round(fraction,4)), elapsed_seconds=round(time.monotonic()-started,1))
         result = run_experiment(job['request'], DATA_ROOT, ROOT / 'data/options_lab_cache', progress)
         job.update(status='completed', result=result, progress=1, message='Research run complete',
                    elapsed_seconds=round(time.monotonic()-started, 3))
@@ -62,7 +62,23 @@ def worker(job):
         traceback.print_exc()
         job.update(status='failed', message=str(exc))
     finally:
-        persist(job)
+        with LOCK:
+            if job['id'] in JOBS:
+                persist(job)
+
+
+def delete_runs(ids=None):
+    """Remove finished history reversibly; active workers cannot be deleted."""
+    with LOCK:
+        ids=list(JOBS) if ids is None else ids
+        ids=[id for id in ids if id in JOBS and JOBS[id]['status'] not in ('queued','running')]
+        trash=RUNS.parent/'deleted_runs'
+        trash.mkdir(parents=True,exist_ok=True)
+        for id in ids:
+            source=RUNS/(id+'.json')
+            if source.exists():source.replace(trash/(id+'.json'))
+            del JOBS[id]
+        return {'deleted':ids,'active_runs_kept':sum(j['status'] in ('queued','running') for j in JOBS.values())}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -85,6 +101,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond({'application': 'options-lab', 'status': 'ready'})
             if path == '/api/presets/strangle-20-delta':
                 return self.respond(json.loads((Path(__file__).parent / 'presets/strangle-20-delta.json').read_text()))
+            if path == '/api/presets/one-btc-example':
+                return self.respond(json.loads((Path(__file__).parent / 'presets/one-btc-example.json').read_text()))
             if path == '/api/presets':
                 from .ideas import strategy_library
                 return self.respond(strategy_library())
@@ -122,6 +140,8 @@ class Handler(BaseHTTPRequestHandler):
                         writer.writerows(flat)
                     return self.respond(out.getvalue().encode(), content_type='text/csv', download=f'options-trades-variant-{variant+1}.csv')
                 clean = {k: v for k, v in job.items() if k != 'cancel'}
+                if job['status']=='running' and job.get('started_at'):
+                    clean['elapsed_seconds']=round((datetime.now(timezone.utc)-datetime.fromisoformat(job['started_at'])).total_seconds(),1)
                 return self.respond(clean, download=f"{job['id']}.json" if path.endswith('/export') else None)
             static = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/favicon.svg': 'favicon.svg', '/guide': 'guide.html', '/methodology': 'methodology.html'}
             if path in static:
@@ -144,6 +164,8 @@ class Handler(BaseHTTPRequestHandler):
             if length > 100_000 or length <= 0:
                 raise ValueError('Invalid request size')
             payload = json.loads(self.rfile.read(length))
+            if self.path in ('/api/runs/delete', '/api/runs/clear'):
+                return self.respond(delete_runs(None if self.path.endswith('/clear') else [payload.get('id')]))
             if self.path == '/api/runs':
                 from app.options_lab.engine import validate_request
                 request = validate_request(payload)

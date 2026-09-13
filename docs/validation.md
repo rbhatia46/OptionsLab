@@ -31,3 +31,11 @@ These are functionality checks, not strategy validation or a claim of trading pr
 ## Remaining limits
 
 The tests do not establish exchange execution fidelity, historical fee accuracy, live capital requirements, liquidation risk, official settlement values, or predictive performance. No overnight, rolling, hedging, settlement-to-expiry, or adaptive walk-forward simulation is claimed. See the methodology and usage guide for the full scope.
+
+
+## BTC sizing and usability update (engine 1.2.0)
+
+- 21 tests pass, including fixed-BTC capital independence, retained partial-fill limits, and recoverable history deletion with active-run protection.
+- Browser checks: zero BTC produces a named validation error; 1 BTC starts immediately with a busy button, spinner and elapsed/ETA status; the guide preset completes one position with both 1 BTC legs fully entered and exited.
+- The one-day guide uses June 1, 2026 ATM options, 100% volume participation and a 600-second fill timeout. This deliberately optimistic execution walkthrough is not a live-fill or performance claim. Seven-day checks at 1 BTC encountered unresolved exits; those outcomes remain explicit.
+- Clear result view resets output; deleting a temporary validation run removes it from history and preserves its JSON in deleted_runs. Clearing all finished history is covered by an isolated test, without deleting the user's research history.

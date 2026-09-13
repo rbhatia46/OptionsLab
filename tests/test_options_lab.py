@@ -146,6 +146,33 @@ class ReplayTests(unittest.TestCase):
         self.assertIsNone(censored['net_pnl'])
         self.assertIsNone(censored['sharpe'])
 
+    def test_btc_size_bypasses_capital_but_keeps_fill_limits(self):
+        book=self.book(roles={'maker':self.ticks([-1,2],[60,60],[1000,500]),'taker':self.ticks([-1,14],[65,80],[1000,1000])})
+        c={**self.c,'structure':'short_call','selection':'otm','otm_pct':1.,'min_credit':0.,'quantity_btc':1.,'capital':100}
+        blocked,skips=replay_day('2026-06-01',{book.symbol:book},self.spot,c,100,lambda _:None)
+        self.assertIsNone(blocked)
+        self.assertEqual(skips['insufficient_margin_reserve'],1)
+        outcome,_=replay_day('2026-06-01',{book.symbol:book},self.spot,{**c,'sizing_mode':'btc'},100,lambda _:None)
+        self.assertIsNotNone(outcome)
+        trade,_=outcome
+        self.assertFalse(trade['entry_complete'])
+        self.assertEqual(trade['exit_reason'],'partial_entry_unwind')
+
+    def test_btc_metrics_have_no_capital_denominator(self):
+        trades=[dict(date='2026-06-01',net_pnl=-1500.,status='closed',fees=1,slippage=1,mark_events=1,fresh_marks=1)]
+        results=[]
+        for capital in (1000,100000):
+            results.append(metrics(trades,['2026-06-01','2026-06-02'],capital,10,[(self.t,capital),(self.t+1,capital-1500)],sizing_mode='btc'))
+        self.assertEqual(results[0],results[1])
+        self.assertEqual(results[0]['max_drawdown'],1500)
+        self.assertEqual(results[0]['curve'][-1]['equity'],-1500)
+        self.assertIsNone(results[0]['return_pct'])
+        self.assertIsNone(results[0]['final_equity'])
+        self.assertLess(results[0]['sharpe'],0)
+        censored=metrics(trades,['2026-06-01'],1000,0,[(self.t,1000)],True,'btc')
+        self.assertIsNone(censored['net_pnl'])
+        self.assertIsNone(censored['sharpe'])
+
     def test_invalid_configs_rejected(self):
         for patch in [dict(call_delta=float('nan')),dict(quantity_btc=.0015),dict(exit_time='12:00'),dict(mode='sweep',start='2026-06-01',end='2026-06-02'),dict(fake=1)]:
             with self.assertRaises(ValueError):

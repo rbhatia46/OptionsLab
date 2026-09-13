@@ -13,9 +13,9 @@ import pandas as pd
 from .data import index_source, load_day
 from .pricing import YEAR_NS, implied_vol, greeks
 
-VERSION = 'options-lab-1.1.0'
+VERSION = 'options-lab-1.2.0'
 SECOND = 1_000_000_000
-DEFAULTS = dict(name='20Δ short strangle', structure='strangle', selection='delta', dte=0,
+DEFAULTS = dict(sizing_mode='capital', name='20Δ short strangle', structure='strangle', selection='delta', dte=0,
     call_delta=.2, put_delta=.2, delta_tolerance=.08, otm_pct=1., wing_width=1000., quantity_btc=.01,
     start='2026-06-01', end='2026-06-07', entry_time='06:00', exit_time='11:30', entry_window_min=30,
     days='all', take_profit_pct=50., stop_loss_pct=100., min_credit=1., max_loss_usd=0., delta_exit=0.,
@@ -50,7 +50,7 @@ def validate_request(payload):
         c[key] = int(c[key])
     if abs(c['quantity_btc']/.001-round(c['quantity_btc']/.001))>1e-6:
         raise ValueError('BTC quantity must be a multiple of the 0.001 BTC contract.')
-    choices = dict(structure=['strangle','straddle','condor','call_spread','put_spread','short_call','short_put','custom'],
+    choices = dict(sizing_mode=['capital','btc'], structure=['strangle','straddle','condor','call_spread','put_spread','short_call','short_put','custom'],
                    selection=['delta','otm'],days=['all','weekdays','weekends'],mode=['single','sweep'],
                    objective=['sharpe','net_pnl','calmar','drawdown'])
     for key,values in choices.items():
@@ -332,7 +332,7 @@ def replay_day(date,books,spots,c,equity,progress):
     for t in range(entry,last_entry+1,60*SECOND):
         candidate,reason=select_legs(books,spots,t,c)
         if candidate:
-            if candidate['reserve']>max(0,equity)*c['allocation_pct']/100:
+            if c['sizing_mode']=='capital' and candidate['reserve']>max(0,equity)*c['allocation_pct']/100:
                 reason='insufficient_margin_reserve';candidate=None
             else:
                 break
@@ -443,7 +443,7 @@ def replay_day(date,books,spots,c,equity,progress):
     return (row,path_equity),dict(skip)
 
 
-def metrics(trades,days,capital,rate,path,unresolved=False):
+def metrics(trades,days,capital,rate,path,unresolved=False,sizing_mode='capital'):
     closed=[t for t in trades if t['net_pnl'] is not None]
     pnls=np.array([t['net_pnl'] for t in closed],dtype=float)
     daily_map={t['date']:t['net_pnl'] for t in closed}
@@ -481,6 +481,21 @@ def metrics(trades,days,capital,rate,path,unresolved=False):
         expected_shortfall_95=float(tail.mean()) if count else None,fees=sum(t['fees'] for t in trades),
         slippage=sum(t['slippage'] for t in trades),mark_coverage_pct=100*fresh/obs if obs else None,
         sample_days=len(days),daily=daily,curve=curve)
+    if sizing_mode == 'btc':
+        # Fixed BTC size has no account-value denominator. Report a P&L path
+        # and zero-benchmark daily P&L ratios, independent of legacy capital.
+        daily_pnl=np.array([d['pnl'] for d in daily],dtype=float)
+        pnl_sd=float(np.std(daily_pnl,ddof=1)) if len(daily_pnl)>1 else 0
+        pnl_down=math.sqrt(float(np.mean(np.minimum(daily_pnl,0)**2))) if len(daily_pnl) else 0
+        result['sharpe']=float(np.mean(daily_pnl)/pnl_sd*math.sqrt(365)) if pnl_sd>1e-12 else None
+        result['sortino']=float(np.mean(daily_pnl)/pnl_down*math.sqrt(365)) if pnl_down>1e-12 else None
+        for key in ('return_pct','final_equity','max_drawdown_pct','cagr_pct','calmar'):
+            result[key]=None
+        for row in daily:
+            row['equity']-=capital;row['return_pct']=None
+        for point in curve:
+            point['equity']-=capital;point['drawdown_pct']=None
+        result['ratio_basis']='Daily USD P&L at fixed BTC size; zero benchmark; sqrt(365)'
     if unresolved:
         for key in ('net_pnl','return_pct','final_equity','max_drawdown','max_drawdown_pct','sharpe','sortino','cagr_pct','calmar','profit_factor','win_rate','average_trade'):
             result[key]=None
@@ -526,7 +541,7 @@ def run_experiment(c,data_root,cache,progress=lambda message,fraction:None):
             for idx,s in enumerate(state):
                 cfg=s['config'];weekday=pd.Timestamp(date).dayofweek
                 def tick_progress(message):
-                    progress(f'{message} · configuration {idx+1}/{len(state)}',min(.99,fraction))
+                    progress(f'{message} · configuration {idx+1}/{len(state)}',min(.99,(month_i+(selected.index(date)+idx/len(state))/len(selected))/len(months)))
                 tick_progress(f'Replaying {date}')
                 if s['halted']:
                     s['skips']['halted_after_unresolved_or_insolvency']+=1;continue
@@ -542,7 +557,7 @@ def run_experiment(c,data_root,cache,progress=lambda message,fraction:None):
                         s['halted']=True
                     else:
                         s['equity']+=trade['net_pnl']
-                        if s['equity']<=0:
+                        if cfg['sizing_mode']=='capital' and s['equity']<=0:
                             s['halted']=True
                 else:
                     s['skips']['no_entry_days']+=1
@@ -563,7 +578,7 @@ def run_experiment(c,data_root,cache,progress=lambda message,fraction:None):
             full_path.append((pd.Timestamp(date,tz='UTC').value+86400*SECOND-1,eq))
         full_path.sort(key=lambda p:p[0])
         has_open=any(t['net_pnl'] is None for t in s['trades'])
-        m=metrics(s['trades'],dates,c['capital'],c['rate_pct'],full_path,has_open)
+        m=metrics(s['trades'],dates,c['capital'],c['rate_pct'],full_path,has_open,c['sizing_mode'])
         def subset(selected):
             ts=[t for t in s['trades'] if t['date'] in selected]
             ps=[(pd.Timestamp(selected[0],tz='UTC').value,c['capital'])] if selected else []
@@ -572,7 +587,7 @@ def run_experiment(c,data_root,cache,progress=lambda message,fraction:None):
             lower=pd.Timestamp(selected[0],tz='UTC').value if selected else 0
             upper=pd.Timestamp(selected[-1],tz='UTC').value+86400*SECOND if selected else 0
             ps.extend((t,e-before) for t,e in full_path if lower<=t<upper)
-            return metrics(ts,selected,c['capital'],c['rate_pct'],ps,any(t['net_pnl'] is None and t['date']<=selected[-1] for t in s['trades']) if selected else False)
+            return metrics(ts,selected,c['capital'],c['rate_pct'],ps,any(t['net_pnl'] is None and t['date']<=selected[-1] for t in s['trades']) if selected else False,c['sizing_mode'])
         train=subset(train_days) if c['mode']=='sweep' else None
         test=subset(test_days) if c['mode']=='sweep' else None
         # Downsample display curve while retaining per-bucket extrema. Metrics used full event path.
@@ -596,7 +611,7 @@ def run_experiment(c,data_root,cache,progress=lambda message,fraction:None):
             m=run['development'];objective=c['objective']
             value=m['max_drawdown'] if objective=='drawdown' else m[objective]
             development_missing=any(d in train_days for d in run['missing_days'])
-            run['eligible']=m['trade_count']>=c['min_trades'] and m['unresolved_count']==0 and value is not None and m['final_equity'] is not None and m['final_equity']>0 and not development_missing
+            run['eligible']=m['trade_count']>=c['min_trades'] and m['unresolved_count']==0 and value is not None and (c['sizing_mode']=='btc' or (m['final_equity'] is not None and m['final_equity']>0)) and not development_missing
             run['objective_value']=value
             if run['eligible']:
                 eligible.append(((-value if objective=='drawdown' else value),run['index']))
@@ -605,7 +620,7 @@ def run_experiment(c,data_root,cache,progress=lambda message,fraction:None):
     return dict(engine_version=VERSION,source_root=str(data_root),sources=sources,runs=result_runs,
                 selected_index=selected_index,winner_selected=winner,
                 split_date=test_days[0] if c['mode']=='sweep' else None,
-                assumptions=['USD linear premiums; one contract = 0.001 BTC.',
+                assumptions=['BTC-size mode omits account capital and margin eligibility; USD P&L ratios use daily P&L with a zero benchmark.' if c['sizing_mode']=='btc' else 'Capital mode uses account reserve eligibility and daily equity returns.', 'USD linear premiums; one contract = 0.001 BTC.',
                     'Futures used as a spot proxy; no official settlement, order book, funding, hedges, or liquidation.',
                     'Risk monitoring starts after entry completion; execution-window drawdowns may be unobserved.',
                     'Observed intraday drawdown is a lower bound when marks are stale or absent.',

@@ -36,14 +36,14 @@ Read the [complete usage guide](docs/usage-guide.md) for an exact 0.20-delta str
 - Per-leg IV bounds and a trailing one-hour underlying-return filter.
 - Portfolio profit targets and stop losses as a percentage of actual entry credit; optional cash-loss and net-delta exits.
 - Configurable latency, trade-volume participation, fill timeout, stale-price limits, adverse slippage, fees, premium fee caps, and fee tax.
-- Fixed starting capital and a configurable margin reserve / capital-allocation ceiling.
-- Up to 36 combinations of delta, stop, and target, ranked by development Sharpe, P&L, Calmar, or drawdown. The final chronological portion is reported separately as holdout.
+- BTC quantity controls position size; the current UI has no account-capital constraint. Legacy capital-mode runs remain reproducible.
+- Up to 36 combinations of delta, stop, and target, ranked by development Sharpe, P&L, or dollar drawdown. The final chronological portion is reported separately as holdout.
 
 DTE selects the first *observed* expiry on or after the target date, within three days. All positions close in the same UTC session; choosing a longer-dated contract does not enable overnight holding. The straddle uses a common ATM strike. Condors and spreads buy wings at least the configured distance beyond their short strikes.
 
 ## Results
 
-The UI includes equity and observed drawdown, daily-return Sharpe/Sortino, returns on starting capital, profit factor, win rate, fees and slippage, monthly P&L, trade excursions, tail-loss summaries, and portfolio Greeks. Every trade exposes the selected legs, IV/Greeks at the decision, actual partial quantities, entry/exit prints and costs, and exit reasons.
+The UI includes cumulative dollar P&L and observed drawdown, fixed-size daily-P&L Sharpe/Sortino, profit factor, win rate, fees and slippage, monthly P&L, trade excursions, tail-loss summaries, and portfolio Greeks. Every trade exposes the selected legs, IV/Greeks at the decision, actual partial quantities, entry/exit prints and costs, and exit reasons.
 
 - **Run history** persists results across restarts and lets you reuse the configuration.
 - **Save configuration / Import configuration** provides portable JSON presets.
@@ -51,7 +51,7 @@ The UI includes equity and observed drawdown, daily-return Sharpe/Sortino, retur
 - **Full result + configuration** exports the entire experiment with source fingerprints and audit evidence.
 - **Data & coverage** inventories local source files; each run audits the selected dates and source contents.
 
-The initial small starter configuration is for functionality testing, not a recommended strategy or capital allocation. Low participation and large orders can produce incomplete entries or unclosed exits; these are results, not errors to hide.
+The example configuration is for functionality testing, not a recommended strategy or capital allocation. Low participation and large orders can produce incomplete entries or unclosed exits; these are results, not errors to hide.
 
 ## Data contract
 
@@ -88,4 +88,4 @@ node --check app/options_lab/web/app.js  # optional JavaScript syntax check
 
 The tests exercise pricing identities, IV inversion, analytical Greeks against numerical sensitivities, as-of timing, whole-contract volume limits, fill costs, partial-entry unwinds, unresolved exposure, drawdown from starting capital, validation, and ingestion caching. Browser validation and real-data smoke results are documented in [validation notes](docs/validation.md).
 
-The Research workspace includes a nine-idea strategy library: one-click configurations for delta strangles, iron condors, directional credit spreads, an ATM straddle, custom delta wings, weekends, and a four-variant holdout comparison. Each loads all inputs for review before running. See the [usage guide](docs/usage-guide.md#start-from-the-strategy-library).
+The Research workspace includes a nine-idea strategy library: one-click configurations for delta strangles, iron condors, directional credit spreads, an ATM straddle, custom delta wings, weekends, and a four-variant holdout comparison. Each loads rules for review while keeping your BTC size. The builder starts in simple mode with advanced settings available on demand. See the [usage guide](docs/usage-guide.md#3-start-from-a-strategy-idea).
