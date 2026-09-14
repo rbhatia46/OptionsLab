@@ -30,14 +30,16 @@ Read the [complete usage guide](docs/usage-guide.md) for an exact 0.20-delta str
 
 For the standalone multi-timeframe RSI-versus-RSI-SMA directional option seller, use [the script guide](docs/rsi-option-seller.md). It reports each timeframe independently and a combined portfolio without requiring the browser UI.
 
+To reproduce the earlier optimized 0.75% OTM strangle study, use the [legacy strangle validation](docs/legacy-strangle-validation.md). The same configuration is preloaded in the Research Workspace under **Validation**.
+
 ## What you can test
 
 - Short strangles, straddles, iron condors, call/put credit spreads, naked calls/puts, and custom 1–6-leg net-credit structures.
 - Absolute delta selection (for example, 0.20 delta calls and puts), OTM strike distance, wing widths, BTC quantity, and calendar DTE targets.
 - OTM-distance tolerance prevents a missing nearby quote from silently selecting a materially farther strike.
-- Intraday entry/exit times in IST, a minute-by-minute entry retry window, and weekday/weekend filters.
+- Intraday entry/exit times in IST, configurable entry retry/check intervals, and weekday/weekend filters.
 - Per-leg IV bounds and a trailing one-hour underlying-return filter.
-- Portfolio profit targets and stop losses as a percentage of actual entry credit; optional cash-loss and net-delta exits.
+- Portfolio profit targets and stop losses as a percentage of actual entry credit, with selectable before-fee or after-fee trigger P&L; optional cash-loss and net-delta exits.
 - A full-size observed-price model for strategy research, plus strict trade-volume participation for execution-capacity tests; both support latency, stale-price limits, adverse slippage, fees, premium fee caps, and fee tax. The price model can use a separately bounded older observed trade for exits and records its source time and age.
 - BTCUSD futures moving-average crossover and Supertrend studies on IST-aligned 30-second through weekly bars, with long/short direction controls, next-bar execution, optional price stops and targets, and fixed BTC size.
 - BTC quantity controls position size; the current UI has no account-capital constraint. Legacy capital-mode runs remain reproducible.
@@ -92,4 +94,4 @@ node --check app/options_lab/web/app.js  # optional JavaScript syntax check
 
 The tests exercise pricing identities, IV inversion, analytical Greeks against numerical sensitivities, as-of timing, whole-contract volume limits, fill costs, partial-entry unwinds, unresolved exposure, drawdown from starting capital, validation, and ingestion caching. Browser validation and real-data smoke results are documented in [validation notes](docs/validation.md).
 
-The Research workspace includes a 13-idea strategy library: nine options ideas plus 15-minute and one-hour moving-average/Supertrend futures templates. Each loads rules for review while keeping your BTC size. The builder starts in simple mode with advanced settings available on demand. See the [usage guide](docs/usage-guide.md#3-start-from-a-strategy-idea).
+The Research workspace includes a 14-idea strategy library, including the exact legacy strangle validation setup and 15-minute/one-hour moving-average and Supertrend futures templates. Ordinary idea cards keep your BTC size; the validation card deliberately loads its historical 2 BTC benchmark size. The builder starts in simple mode with advanced settings available on demand. See the [usage guide](docs/usage-guide.md#3-start-from-a-strategy-idea).

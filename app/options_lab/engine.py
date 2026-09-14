@@ -13,12 +13,13 @@ import pandas as pd
 from .data import index_source, load_day
 from .pricing import YEAR_NS, implied_vol, greeks
 
-VERSION = 'options-lab-1.4.0'
+VERSION = 'options-lab-1.5.0'
 SECOND = 1_000_000_000
 DEFAULTS = dict(sizing_mode='capital', execution_mode='volume', strategy_family='options', name='20Δ short strangle', structure='strangle', selection='delta', dte=0,
     call_delta=.2, put_delta=.2, delta_tolerance=.08, otm_pct=1., otm_tolerance_pct=1., wing_width=1000., quantity_btc=.01,
     start='2026-06-01', end='2026-06-07', entry_time='06:00', exit_time='11:30', entry_window_min=30,
-    days='all', take_profit_pct=50., stop_loss_pct=100., min_credit=1., max_loss_usd=0., delta_exit=0.,
+    entry_check_interval_min=1,
+    days='all', take_profit_pct=50., stop_loss_pct=100., risk_trigger_basis='net', min_credit=1., max_loss_usd=0., delta_exit=0.,
     capital=10000., margin_pct=20., allocation_pct=80., min_iv=0., max_iv=500., min_move_pct=-100.,
     max_move_pct=100., slippage_pct=1., participation_pct=10., latency_sec=1., fill_timeout_sec=300.,
     max_age_sec=300., exit_price_max_age_sec=21600., spot_age_sec=60., fee_pct=.01, fee_cap_pct=3.5, tax_pct=18., rate_pct=0.,
@@ -28,7 +29,7 @@ DEFAULTS = dict(sizing_mode='capital', execution_mode='volume', strategy_family=
     trend_fast=20, trend_slow=50, supertrend_period=10, supertrend_multiplier=3.,
     trend_take_profit_pct=0., trend_stop_loss_pct=0.)
 BOUNDS = dict(dte=(0,30),call_delta=(.01,.95),put_delta=(.01,.95),delta_tolerance=(.005,.3),otm_pct=(0,50),otm_tolerance_pct=(0,10),
-    wing_width=(1,100000),quantity_btc=(.001,100),entry_window_min=(0,120),take_profit_pct=(1,100),
+    wing_width=(1,100000),quantity_btc=(.001,100),entry_window_min=(0,120),entry_check_interval_min=(1,30),take_profit_pct=(1,100),
     stop_loss_pct=(1,1000),min_credit=(0,1e7),max_loss_usd=(0,1e9),delta_exit=(0,1000),capital=(100,1e10),
     margin_pct=(1,100),allocation_pct=(1,100),min_iv=(0,1000),max_iv=(1,1000),min_move_pct=(-100,100),
     max_move_pct=(-100,100),slippage_pct=(0,50),participation_pct=(1,100),latency_sec=(0,60),
@@ -49,7 +50,7 @@ def validate_request(payload):
         value=c[key]
         if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not lo<=value<=hi:
             raise ValueError(f'{key} must be a number between {lo} and {hi}.')
-    for key in ('dte','expiry_hour','min_trades','entry_window_min','trend_fast','trend_slow','supertrend_period'):
+    for key in ('dte','expiry_hour','min_trades','entry_window_min','entry_check_interval_min','trend_fast','trend_slow','supertrend_period'):
         if int(c[key]) != c[key]:
             raise ValueError(f'{key} must be an integer.')
         c[key] = int(c[key])
@@ -58,7 +59,7 @@ def validate_request(payload):
     choices = dict(sizing_mode=['capital','btc'], execution_mode=['price','volume'],strategy_family=['options','trend'],
                    structure=['strangle','straddle','condor','call_spread','put_spread','short_call','short_put','custom'],
                    selection=['delta','otm'],days=['all','weekdays','weekends'],mode=['single','sweep'],
-                   objective=['sharpe','net_pnl','calmar','drawdown'],trend_strategy=['ma_crossover','supertrend'],
+                   objective=['sharpe','net_pnl','calmar','drawdown'],risk_trigger_basis=['net','before_fees'],trend_strategy=['ma_crossover','supertrend'],
                    trend_timeframe=['30s','1m','2m','3m','5m','10m','15m','30m','90m','1h','2h','4h','6h','12h','1D','3D','1W'],
                    trend_direction=['long_short','long_only','short_only'],trend_ma_type=['sma','ema'])
     for key,values in choices.items():
@@ -180,6 +181,15 @@ def opposite(side):
     return 'buy' if side=='sell' else 'sell'
 
 
+def observed_quote(book,side,t,c,age=None):
+    """Return the quote source used by the selected execution model."""
+    age_limit=c['max_age_sec'] if age is None else age
+    if c['execution_mode']=='price':
+        quotes=[q for ticks in book.roles.values() if (q:=ticks.asof(t,age_limit)) is not None]
+        return max(quotes,key=lambda q:q[1]) if quotes else None
+    return book.roles[role(side)].asof(t,age_limit)
+
+
 def model(book,quote,spot_ticks,t,c):
     if quote is None:
         return None
@@ -221,7 +231,7 @@ def select_legs(books,spots,t,c):
                 continue
             if wing is not None and ((kind=='C' and b.strike<wing) or (kind=='P' and b.strike>wing)):
                 continue
-            q=b.roles[role(side)].asof(t,c['max_age_sec'])
+            q=observed_quote(b,side,t,c)
             g=model(b,q,spots,t,c)
             if g is None or not c['min_iv']<=g['iv']*100<=c['max_iv']:
                 continue
@@ -362,16 +372,17 @@ def fill_cash(fills):
 
 
 def marks(legs,spots,t,c,with_greeks=False):
-    close_cost=0; exposure=dict(delta=0.,gamma=0.,theta=0.,vega=0.); valid_greeks=True
+    close_cost=0;close_fees=0; exposure=dict(delta=0.,gamma=0.,theta=0.,vega=0.); valid_greeks=True
     spot=spots.asof(t,c['spot_age_sec'])
     if spot is None:
         return None
     for l in legs:
-        b=l['book'];side=opposite(l['side']);q=b.roles[role(side)].asof(t,c['max_age_sec'])
+        b=l['book'];side=opposite(l['side']);q=observed_quote(b,side,t,c)
         if q is None:
             return None
         price=q[0]*(1+(1 if side=='buy' else -1)*c['slippage_pct']/100)
         fee=min(l['quantity']*spot[0]*c['fee_pct']/100,l['quantity']*price*c['fee_cap_pct']/100)*(1+c['tax_pct']/100)
+        close_fees+=fee
         close_cost+=(1 if side=='buy' else -1)*l['quantity']*price+fee
         if with_greeks:
             g=model(b,q,spots,t,c)
@@ -380,7 +391,7 @@ def marks(legs,spots,t,c,with_greeks=False):
             else:
                 for k in exposure:
                     exposure[k]+=(1 if l['side']=='buy' else -1)*l['quantity']*g[k]
-    return close_cost,exposure if valid_greeks else None
+    return close_cost,exposure if valid_greeks else None,close_fees
 
 
 def replay_day(date,books,spots,c,equity,progress):
@@ -388,7 +399,7 @@ def replay_day(date,books,spots,c,equity,progress):
     at=lambda clock:midnight+(int(clock[:2])*3600+int(clock[3:])*60)*SECOND
     entry=at(c['entry_time']);scheduled=at(c['exit_time']);last_entry=entry+c['entry_window_min']*60*SECOND
     skip=Counter();candidate=None
-    for t in range(entry,last_entry+1,60*SECOND):
+    for t in range(entry,last_entry+1,c['entry_check_interval_min']*60*SECOND):
         candidate,reason=select_legs(books,spots,t,c)
         if candidate:
             if c['sizing_mode']=='capital' and candidate['reserve']>max(0,equity)*c['allocation_pct']/100:
@@ -419,8 +430,10 @@ def replay_day(date,books,spots,c,equity,progress):
     else:
         arrays=[]
         for leg in active:
-            ticks=leg['book'].roles[role(opposite(leg['side']))].t
-            arrays.append(ticks[(ticks>=completion)&(ticks<=scheduled)])
+            sources=(leg['book'].roles.values() if c['execution_mode']=='price' else
+                     (leg['book'].roles[role(opposite(leg['side']))],))
+            for ticks in sources:
+                arrays.append(ticks.t[(ticks.t>=completion)&(ticks.t<=scheduled)])
         if c['delta_exit']>0:
             arrays.append(spots.t[(spots.t>=completion)&(spots.t<=scheduled)])
         events=np.unique(np.concatenate([*arrays,np.array([completion,scheduled],dtype=np.int64)]))
@@ -434,7 +447,9 @@ def replay_day(date,books,spots,c,equity,progress):
             m=marks(active,spots,tick,c,calculate_greeks)
             if m is None:
                 continue
-            fresh+=1;close_cost,g=m;pnl=cash-close_cost
+            fresh+=1;close_cost,g,close_fees=m;pnl=cash-close_cost
+            trigger_pnl=(pnl if c['risk_trigger_basis']=='net' else
+                         pnl+sum(f['fee'] for f in entry_fills)+close_fees)
             if calculate_greeks:
                 last_greek=tick;last_exposure=g
                 if g is None:
@@ -442,13 +457,13 @@ def replay_day(date,books,spots,c,equity,progress):
             delta=last_exposure['delta'] if last_exposure else None
             # Net liquidation P&L includes entry/estimated exit fees and adverse slippage.
             hit=None
-            if pnl<=-credit*c['stop_loss_pct']/100:
+            if trigger_pnl<=-credit*c['stop_loss_pct']/100:
                 hit='credit_stop'
             if c['max_loss_usd']>0 and pnl<=-c['max_loss_usd']:
                 hit='cash_stop'
             if c['delta_exit']>0 and delta is not None and abs(delta)>=c['delta_exit']:
                 hit='delta_exit'
-            if hit is None and pnl>=credit*c['take_profit_pct']/100:
+            if hit is None and trigger_pnl>=credit*c['take_profit_pct']/100:
                 hit='profit_target'
             # Keep exact risk extrema separately; chart sampling cannot change metrics.
             paths.append(dict(t=tick,pnl=pnl,delta=delta,gamma=last_exposure['gamma'] if last_exposure else None,
@@ -504,6 +519,7 @@ def replay_day(date,books,spots,c,equity,progress):
         fees=fees,slippage=slip,margin_reserve=candidate['reserve'],underlying_entry=candidate['spot'],
         mae=minp,mfe=maxp,mark_events=observations,fresh_marks=fresh,invalid_greek_events=invalid_greeks,
         mark_coverage_pct=100*fresh/observations if observations else None,
+        risk_trigger_basis=c['risk_trigger_basis'],
         entry_greeks=greek_at_entry,legs=serialized,planned_legs=planned,unresolved=unresolved,path=compact,
         execution_model=('full requested BTC at an observed option price; exits may use the configured bounded stale-price fallback' if c['execution_mode']=='price'
                          else 'independent side-aware volume-constrained trade-print fills'),
@@ -535,6 +551,11 @@ def metrics(trades,days,capital,rate,path,unresolved=False,sizing_mode='capital'
         curve.append(dict(time=iso(t),equity=e,drawdown=-dd,drawdown_pct=-ddpct))
     wins=float(pnls[pnls>0].sum());losses=-float(pnls[pnls<0].sum())
     count=len(pnls);duration=max(len(days),1)
+    closed_curve=np.cumsum(pnls) if count else np.array([],dtype=float)
+    closed_peaks=np.maximum.accumulate(np.r_[0.,closed_curve]) if count else np.array([0.])
+    closed_trade_drawdown=float(np.max(closed_peaks[1:]-closed_curve)) if count else 0.
+    active_daily=np.array(list(daily_map.values()),dtype=float)
+    active_sd=float(np.std(active_daily,ddof=1)) if len(active_daily)>1 else 0.
     annualized=(math.exp(math.log(eq/capital)*365/duration)-1)*100 if eq>0 and abs(math.log(eq/capital)*365/duration)<700 else None
     obs=sum(t['mark_events'] for t in trades);fresh=sum(t['fresh_marks'] for t in trades)
     worst=float(pnls.min()) if count else None
@@ -542,7 +563,9 @@ def metrics(trades,days,capital,rate,path,unresolved=False,sizing_mode='capital'
     result=dict(trade_count=count,unresolved_count=sum(t['status']=='unresolved' for t in trades),
         net_pnl=float(pnls.sum()),realized_closed_pnl=float(pnls.sum()),return_pct=(eq/capital-1)*100,
         final_equity=eq,max_drawdown=maxdd,max_drawdown_pct=maxddpct,
+        closed_trade_max_drawdown=closed_trade_drawdown,
         sharpe=float(np.mean(excess)/sd*math.sqrt(365)) if sd>1e-12 and valid_return else None,
+        active_day_sharpe=float(np.mean(active_daily)/active_sd*math.sqrt(365)) if active_sd>1e-12 else None,
         sortino=float(np.mean(excess)/down*math.sqrt(365)) if down>1e-12 and valid_return else None,
         cagr_pct=annualized if duration>=365 and valid_return else None,
         calmar=annualized/maxddpct if duration>=30 and annualized is not None and maxddpct>0 and valid_return else None,

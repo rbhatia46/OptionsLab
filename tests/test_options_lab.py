@@ -137,6 +137,16 @@ class ReplayTests(unittest.TestCase):
         after,_=select_legs(books,self.spot,self.t,c)
         self.assertEqual([l['book'].symbol for l in before['legs']],[l['book'].symbol for l in after['legs']])
 
+    def test_price_proxy_selection_accepts_fresh_trade_from_either_role(self):
+        premium=price('C',60000,61000,6/24/365,0,.7)
+        book=self.book('C',61000,{'maker':self.ticks([],[],[]),
+                                  'taker':self.ticks([-1],[premium],[1000])})
+        c={**self.c,'execution_mode':'price','structure':'short_call','selection':'otm',
+           'otm_pct':1.,'otm_tolerance_pct':1.,'min_credit':0.}
+        candidate,reason=select_legs({book.symbol:book},self.spot,self.t,c)
+        self.assertIsNone(reason)
+        self.assertEqual(candidate['legs'][0]['book'].symbol,book.symbol)
+
     def test_participation_never_creates_fractional_contracts(self):
         book=self.book(roles={'maker':self.ticks([2,3],[100,100],[9,19]),'taker':self.ticks([],[],[])})
         fills,left,_=fill_order(book,'sell',.01,self.t,self.spot,self.c)
@@ -172,6 +182,7 @@ class ReplayTests(unittest.TestCase):
         trades=[dict(date='2026-06-01',net_pnl=-100.,status='closed',fees=1,slippage=1,mark_events=10,fresh_marks=8)]
         m=metrics(trades,['2026-06-01','2026-06-02'],1000,0,[(self.t,1000),(self.t+1,850),(self.t+2,900)])
         self.assertEqual(m['max_drawdown'],150)
+        self.assertEqual(m['closed_trade_max_drawdown'],100)
         self.assertEqual(m['daily'][1]['pnl'],0)
         self.assertEqual(m['mark_coverage_pct'],80)
         self.assertLess(m['sharpe'],0)

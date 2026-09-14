@@ -1,5 +1,42 @@
 [
   {
+    "id": "legacy-optimized-strangle",
+    "title": "Validated 0.75% OTM strangle",
+    "category": "Validation",
+    "description": "Reproduce the earlier BitcoinOptionsAlphaStrat benchmark on the same date range.",
+    "rules": [
+      "13:00 / 13:15 / 13:30 IST checks · same-day expiry · 2 BTC per leg",
+      "0.75% OTM · $125 credit · TP 60% / SL 200% before fees"
+    ],
+    "caution": "This deliberately loads the historical 2 BTC size and full 2024-04-01 to 2026-03-19 validation sample.",
+    "preserve_quantity": false,
+    "overrides": {
+      "name": "Validated legacy · 0.75% OTM short strangle",
+      "structure": "strangle",
+      "selection": "otm",
+      "dte": 0,
+      "otm_pct": 0.75,
+      "otm_tolerance_pct": 10,
+      "quantity_btc": 2,
+      "start": "2024-04-01",
+      "end": "2026-03-19",
+      "entry_time": "07:30",
+      "exit_time": "11:30",
+      "entry_window_min": 30,
+      "entry_check_interval_min": 15,
+      "take_profit_pct": 60,
+      "stop_loss_pct": 200,
+      "risk_trigger_basis": "before_fees",
+      "min_credit": 125,
+      "execution_mode": "price",
+      "slippage_pct": 1,
+      "latency_sec": 0,
+      "max_age_sec": 1800,
+      "spot_age_sec": 600,
+      "mode": "single"
+    }
+  },
+  {
     "id": "strangle-20",
     "title": "20Δ short strangle",
     "category": "Neutral",

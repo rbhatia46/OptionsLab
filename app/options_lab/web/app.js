@@ -60,7 +60,7 @@ function updateStructure(){const structure=$('#structure').value,family=$('[name
 $('#config-form').addEventListener('input',()=>{updateStructure();updateSimpleMode();saveDraft();});
 let advancedSettings = false;
 const essentialFields = new Set(['strategy_family','name','structure','selection','otm_pct','otm_tolerance_pct','quantity_btc','start','end','entry_time','exit_time','days','call_delta','put_delta','wing_width','take_profit_pct','stop_loss_pct','trend_strategy','trend_timeframe','trend_direction','trend_ma_type','trend_fast','trend_slow','supertrend_period','supertrend_multiplier','trend_take_profit_pct','trend_stop_loss_pct']);
-const optionOnlyFields=new Set(['structure','selection','dte','call_delta','put_delta','delta_tolerance','otm_pct','otm_tolerance_pct','wing_width','entry_time','exit_time','entry_window_min','days','take_profit_pct','stop_loss_pct','min_credit','max_loss_usd','delta_exit','min_iv','max_iv','min_move_pct','max_move_pct','execution_mode','participation_pct','latency_sec','fill_timeout_sec','max_age_sec','exit_price_max_age_sec','spot_age_sec','fee_cap_pct','rate_pct','expiry_hour','mode','grid_delta','grid_stop','grid_tp','objective','train_pct','min_trades']);
+const optionOnlyFields=new Set(['structure','selection','dte','call_delta','put_delta','delta_tolerance','otm_pct','otm_tolerance_pct','wing_width','entry_time','exit_time','entry_window_min','entry_check_interval_min','days','take_profit_pct','stop_loss_pct','risk_trigger_basis','min_credit','max_loss_usd','delta_exit','min_iv','max_iv','min_move_pct','max_move_pct','execution_mode','participation_pct','latency_sec','fill_timeout_sec','max_age_sec','exit_price_max_age_sec','spot_age_sec','fee_cap_pct','rate_pct','expiry_hour','mode','grid_delta','grid_stop','grid_tp','objective','train_pct','min_trades']);
 const trendOnlyFields=new Set(['trend_strategy','trend_timeframe','trend_direction','trend_ma_type','trend_fast','trend_slow','supertrend_period','supertrend_multiplier','trend_take_profit_pct','trend_stop_loss_pct']);
 function updateSimpleMode(){
   const structure=$('#structure').value,family=$('[name="strategy_family"]').value;
@@ -121,7 +121,7 @@ function renderIdeas(){
     try{
       const idea=strategyIdeas.find(i=>i.id===b.dataset.loadIdea);
       const quantity=Number($('[name="quantity_btc"]').value);
-      applyConfig({...idea.config,quantity_btc:quantity,sizing_mode:'btc'});
+      applyConfig(idea.preserve_quantity===false?{...idea.config,sizing_mode:'btc'}:{...idea.config,quantity_btc:quantity,sizing_mode:'btc'});
       $('#sweep-panel').open=idea.config.mode==='sweep';
       $('#idea-status').hidden=false;
       $('#idea-status').textContent=`Loaded: ${idea.title}. Rules loaded; your BTC size was kept. Review the dates and rules, then click Run backtest. Existing results still belong to their original run.`;

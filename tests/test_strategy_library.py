@@ -7,7 +7,7 @@ from app.options_lab.ideas import strategy_library
 class StrategyLibraryTests(unittest.TestCase):
     def test_every_idea_is_complete_and_valid(self):
         ideas = strategy_library()
-        self.assertEqual(len(ideas), 13)
+        self.assertEqual(len(ideas), 14)
         self.assertEqual(len({idea['id'] for idea in ideas}), len(ideas))
         for idea in ideas:
             with self.subTest(idea=idea['id']):
@@ -26,3 +26,10 @@ class StrategyLibraryTests(unittest.TestCase):
         ideas['delta-wings']['legs'][0]['delta'] = .9
         fresh = {i['id']: i['config'] for i in strategy_library()}
         self.assertEqual(fresh['delta-wings']['legs'][0]['delta'], .25)
+
+    def test_legacy_validation_idea_preserves_benchmark_rules(self):
+        idea = next(i for i in strategy_library() if i['id']=='legacy-optimized-strangle')
+        self.assertFalse(idea['preserve_quantity'])
+        self.assertEqual(idea['config']['quantity_btc'],2)
+        self.assertEqual(idea['config']['entry_check_interval_min'],15)
+        self.assertEqual(idea['config']['risk_trigger_basis'],'before_fees')
