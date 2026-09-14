@@ -28,6 +28,8 @@ The original `BitcoinOptionsAlgo` project is not a runtime dependency. No creden
 
 Read the [complete usage guide](docs/usage-guide.md) for an exact 0.20-delta strangle example, every field and option, a four-variant holdout experiment, and explanations of the results. It is also available through **Usage guide** in the app. **Load the guide example** populates the exact controls without running them.
 
+For the standalone multi-timeframe RSI-versus-RSI-SMA directional option seller, use [the script guide](docs/rsi-option-seller.md). It reports each timeframe independently and a combined portfolio without requiring the browser UI.
+
 ## What you can test
 
 - Short strangles, straddles, iron condors, call/put credit spreads, naked calls/puts, and custom 1–6-leg net-credit structures.
