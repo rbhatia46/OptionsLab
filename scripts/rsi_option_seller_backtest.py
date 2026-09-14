@@ -37,7 +37,9 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument('--max-execution-delay-min', type=float, default=15.0)
     p.add_argument('--entry-mark-max-age-sec', type=float, default=300.0)
     p.add_argument('--exit-price-max-age-sec', type=float, default=21600.0)
+    p.add_argument('--model-exit-iv-max-age-sec', type=float, default=604800.0)
     p.add_argument('--underlying-max-age-sec', type=float, default=60.0)
+    p.add_argument('--risk-free-rate-pct', type=float, default=0.0)
     return p
 
 
@@ -55,10 +57,13 @@ def main() -> None:
         max_execution_delay_min=args.max_execution_delay_min,
         entry_mark_max_age_sec=args.entry_mark_max_age_sec,
         exit_price_max_age_sec=args.exit_price_max_age_sec,
-        underlying_max_age_sec=args.underlying_max_age_sec)
+        model_exit_iv_max_age_sec=args.model_exit_iv_max_age_sec,
+        underlying_max_age_sec=args.underlying_max_age_sec,
+        risk_free_rate_pct=args.risk_free_rate_pct)
     summary, paths = run(config, lambda message: print(message, flush=True))
     print('\nRESULTS (USD)')
-    print(summary[['variant','trades','net_pnl','max_drawdown','sharpe','win_rate','fees','slippage']].to_string(index=False))
+    print(summary[['variant','status','tested_through_ist','trades','net_pnl','max_drawdown',
+                   'sharpe','win_rate','market_pnl_before_costs','fees','slippage']].to_string(index=False))
     print('\nREPORT FILES')
     for name, path in paths.items():
         print(f'{name}: {path}')

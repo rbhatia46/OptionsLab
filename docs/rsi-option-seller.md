@@ -39,7 +39,9 @@ From the OptionsLab directory, run:
   --max-execution-delay-min 15 \
   --entry-mark-max-age-sec 300 \
   --exit-price-max-age-sec 21600 \
+  --model-exit-iv-max-age-sec 604800 \
   --underlying-max-age-sec 60 \
+  --risk-free-rate-pct 0 \
   --output outputs/rsi_option_seller
 ```
 
@@ -52,7 +54,7 @@ The output directory contains:
 | File | Contents |
 | --- | --- |
 | `report.md` | Human-readable strategy definition, results table, skipped events, and limitations. |
-| `summary.csv` | Per-timeframe and combined P&L, drawdown, Sharpe, Sortino, win rate, fees, and slippage. |
+| `summary.csv` | Per-timeframe and combined market P&L before costs, net P&L, drawdown, Sharpe, Sortino, win rate, fees, and slippage. |
 | `trades.csv` | Every option symbol, signal, strike, entry/exit timestamp, observed and executed premium, costs, P&L, and price source. |
 | `daily_pnl.csv` | Daily realized P&L, cumulative P&L, and drawdown for every timeframe and the combined portfolio. |
 | `config.json` | Exact configuration, skipped-event counters, and source-file fingerprints. |
@@ -67,7 +69,8 @@ The output directory contains:
 - Source-print volume is ignored. This is the full-size observed-price research model.
 - Entry and exit premiums receive 1% adverse slippage.
 - Each fill pays 0.01% of BTC notional, capped at 3.5% of option premium, plus 18% tax on that fee.
-- An exit without a later observed print may use the latest observed option trade within six hours. The trade ledger labels it `bounded_stale_exit_price` and records its age.
+- An exit without a later observed print may use the latest observed option trade within six hours. If that also fails, Black-Scholes estimates the exit from the latest valid implied volatility observed within seven days, falling back to the entry implied volatility, and the futures price at the exit trigger. The trade ledger labels these cases `bounded_stale_exit_price` or `black_scholes_exit_proxy` and records the quote age.
+- `summary.csv` and `report.md` show `status` and `tested_through_ist`. If an exit still cannot be valued, the timeframe is marked incomplete and its headline performance is left blank instead of presenting a partial replay as a full-history result.
 - RSI warm-up data is loaded before the requested start where the archive permits. Trades never begin before the requested start.
 
 Drawdown is based on realized daily P&L because this standalone report does not construct a continuous option mark-to-market path. The data contains trades rather than an order book, so the results do not establish that 1 BTC could have filled at the reported prices. Funding, spread, depth, margin liquidation, assignment, and official settlement are not modelled.

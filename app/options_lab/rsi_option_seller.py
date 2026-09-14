@@ -13,6 +13,7 @@ import pandas as pd
 
 from .data import index_source, load_day
 from .engine import SECOND, Ticks
+from .pricing import YEAR_NS, implied_vol, price as black_scholes_price
 from .trend import TIMEFRAMES, build_bars
 
 IST = 'Asia/Kolkata'
@@ -44,7 +45,9 @@ class RsiOptionConfig:
     max_execution_delay_min: float = 15.0
     entry_mark_max_age_sec: float = 300.0
     exit_price_max_age_sec: float = 21600.0
+    model_exit_iv_max_age_sec: float = 604800.0
     underlying_max_age_sec: float = 60.0
+    risk_free_rate_pct: float = 0.0
 
     def validate(self) -> None:
         start = pd.Timestamp(self.start, tz=IST)
@@ -57,7 +60,8 @@ class RsiOptionConfig:
             raise ValueError('RSI and RSI-SMA periods must both be at least 2')
         if self.quantity_btc <= 0 or abs(self.quantity_btc/.001-round(self.quantity_btc/.001)) > 1e-7:
             raise ValueError('quantity_btc must be a positive multiple of 0.001 BTC')
-        for name in ('otm_pct', 'otm_tolerance_pct', 'slippage_pct', 'fee_pct', 'fee_cap_pct', 'tax_pct'):
+        for name in ('otm_pct', 'otm_tolerance_pct', 'slippage_pct', 'fee_pct', 'fee_cap_pct',
+                     'tax_pct', 'risk_free_rate_pct'):
             if not 0 <= getattr(self, name) <= 100:
                 raise ValueError(f'{name} must be between 0 and 100')
         if not 0 < self.min_hours_to_expiry < self.max_days_to_expiry*24:
@@ -67,7 +71,8 @@ class RsiOptionConfig:
         if not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', self.expiry_time_ist):
             raise ValueError('expiry_time_ist must be HH:MM')
         if min(self.max_execution_delay_min, self.entry_mark_max_age_sec,
-               self.exit_price_max_age_sec, self.underlying_max_age_sec) <= 0:
+               self.exit_price_max_age_sec, self.model_exit_iv_max_age_sec,
+               self.underlying_max_age_sec) <= 0:
             raise ValueError('execution delay and price-age limits must be positive')
 
 
@@ -214,6 +219,52 @@ def _spot(spots: Ticks, timestamp_ns: int, config: RsiOptionConfig) -> float | N
     return value[0] if value else None
 
 
+def _modeled_exit(archive: Archive, spots: Ticks, symbol: str, decision_ns: int,
+                  config: RsiOptionConfig, fallback_vol: float | None = None,
+                  fallback_quote_ns: int | None = None) -> dict | None:
+    """Estimate an otherwise unobservable exit from prior IV and current futures."""
+    parsed = _expiry_ns(symbol, config.expiry_time_ist)
+    spot_age_limit = max(config.underlying_max_age_sec, config.max_execution_delay_min*60)
+    underlying_observation = spots.asof(decision_ns, spot_age_limit)
+    if parsed is None or underlying_observation is None:
+        return None
+    underlying, underlying_ns = underlying_observation
+    kind, strike, expiry_ns = parsed
+    start_ns = decision_ns-int(config.model_exit_iv_max_age_sec*SECOND)
+    history = archive.option_window(start_ns, decision_ns, symbol)
+    rate = config.risk_free_rate_pct/100
+    candidates = []
+    for row in history.sort_values('timestamp_ns', ascending=False, kind='stable').itertuples(index=False):
+        quote_ns, premium = int(row.timestamp_ns), float(row.price)
+        quote_spot_observation = spots.asof(quote_ns, spot_age_limit)
+        quote_spot = quote_spot_observation[0] if quote_spot_observation else None
+        quote_years = (expiry_ns-quote_ns)/YEAR_NS
+        if quote_spot is None or quote_years <= 0:
+            continue
+        vol = implied_vol(kind, quote_spot, strike, quote_years, rate, premium)
+        if vol is None or not math.isfinite(vol):
+            continue
+        candidates.append((vol, quote_ns))
+        break
+    if not candidates and fallback_vol is not None and math.isfinite(fallback_vol) and fallback_vol > 0:
+        candidates.append((fallback_vol, fallback_quote_ns if fallback_quote_ns is not None else decision_ns))
+    for vol, quote_ns in candidates:
+        exit_years = max(0., (expiry_ns-decision_ns)/YEAR_NS)
+        raw = black_scholes_price(kind, underlying, strike, exit_years, rate, vol)
+        executed = _execution(raw, 'buy', config)
+        return dict(timestamp_ns=decision_ns,
+            timestamp_utc=pd.Timestamp(decision_ns, tz='UTC').isoformat(),
+            timestamp_ist=pd.Timestamp(decision_ns, tz='UTC').tz_convert(IST).isoformat(),
+            quote_time_utc=pd.Timestamp(quote_ns, tz='UTC').isoformat(),
+            quote_age_sec=(decision_ns-quote_ns)/SECOND,
+            price_source='black_scholes_exit_proxy', side='buy', raw_price=raw, price=executed,
+            underlying=underlying, underlying_quote_age_sec=(decision_ns-underlying_ns)/SECOND,
+            implied_vol=vol,
+            fee=_fee(config, config.quantity_btc, underlying, executed),
+            slippage=config.quantity_btc*abs(executed-raw))
+    return None
+
+
 def signal_changed_before_fill(signal_bars: pd.DataFrame, width_ns: int, decision_ns: int,
                                fill_ns: int, intended: int) -> bool:
     closes = signal_bars.t.to_numpy(np.int64)+width_ns
@@ -223,7 +274,9 @@ def signal_changed_before_fill(signal_bars: pd.DataFrame, width_ns: int, decisio
 
 
 def _fill(archive: Archive, spots: Ticks, symbol: str, side: str, decision_ns: int,
-          config: RsiOptionConfig, allow_stale_exit: bool, allow_future: bool = True) -> dict | None:
+          config: RsiOptionConfig, allow_stale_exit: bool, allow_future: bool = True,
+          allow_modeled_exit: bool = False, fallback_vol: float | None = None,
+          fallback_quote_ns: int | None = None) -> dict | None:
     begin = decision_ns+int(config.latency_sec*SECOND)
     deadline = begin+int(config.max_execution_delay_min*60*SECOND)
     observed = archive.first_option_trade(symbol, begin, deadline) if allow_future else None
@@ -233,11 +286,17 @@ def _fill(archive: Archive, spots: Ticks, symbol: str, side: str, decision_ns: i
         observed = archive.last_option_trade(symbol, execution_ns, config.exit_price_max_age_sec)
         source = 'bounded_stale_exit_price'
     if observed is None:
-        return None
+        return _modeled_exit(archive, spots, symbol, decision_ns, config, fallback_vol,
+                             fallback_quote_ns) if allow_modeled_exit else None
     quote_ns, raw = observed
     underlying = _spot(spots, execution_ns, config)
+    if underlying is None and allow_stale_exit:
+        wider = spots.asof(execution_ns, max(config.underlying_max_age_sec,
+                                             config.max_execution_delay_min*60))
+        underlying = wider[0] if wider else None
     if underlying is None:
-        return None
+        return _modeled_exit(archive, spots, symbol, decision_ns, config, fallback_vol,
+                             fallback_quote_ns) if allow_modeled_exit else None
     price = _execution(raw, side, config)
     return dict(timestamp_ns=execution_ns, timestamp_utc=pd.Timestamp(execution_ns, tz='UTC').isoformat(),
                 timestamp_ist=pd.Timestamp(execution_ns, tz='UTC').tz_convert(IST).isoformat(),
@@ -248,15 +307,18 @@ def _fill(archive: Archive, spots: Ticks, symbol: str, side: str, decision_ns: i
 
 
 def replay_timeframe(signal_bars: pd.DataFrame, timeframe: str, archive: Archive,
-                     spots: Ticks, config: RsiOptionConfig, progress=print) -> tuple[list[dict], Counter]:
+                     spots: Ticks, config: RsiOptionConfig, progress=print) -> tuple[list[dict], Counter, dict]:
     width = TIMEFRAMES[timeframe]*SECOND
     start_ns = pd.Timestamp(config.start, tz=IST).tz_convert('UTC').value
     end_ns = (pd.Timestamp(config.end, tz=IST)+pd.Timedelta(days=1)).tz_convert('UTC').value-1
     trades, skips, position, trade_id, available_after = [], Counter(), None, 0, 0
+    last_processed_ns, halted = start_ns, False
 
     def close_position(trigger_ns: int, reason: str, allow_future: bool = True) -> int | None:
         nonlocal position, trade_id, available_after
-        fill = _fill(archive, spots, position['symbol'], 'buy', trigger_ns, config, True, allow_future)
+        fill = _fill(archive, spots, position['symbol'], 'buy', trigger_ns, config, True,
+                     allow_future, allow_modeled_exit=True, fallback_vol=position['entry_implied_vol'],
+                     fallback_quote_ns=position['entry']['timestamp_ns'])
         if fill is None:
             skips['unresolved_exit'] += 1
             position['unresolved_reason'] = reason
@@ -275,7 +337,10 @@ def replay_timeframe(signal_bars: pd.DataFrame, timeframe: str, archive: Archive
             entry_exec_price=position['entry']['price'], exit_raw_price=fill['raw_price'], exit_exec_price=fill['price'],
             entry_price_source=position['entry']['price_source'], exit_price_source=fill['price_source'],
             exit_quote_age_sec=fill['quote_age_sec'], underlying_entry=position['entry']['underlying'],
-            underlying_exit=fill['underlying'], entry_fees=position['entry']['fee'], exit_fees=fill['fee'],
+            underlying_exit=fill['underlying'], entry_implied_vol=position['entry_implied_vol'],
+            exit_implied_vol=fill.get('implied_vol'),
+            exit_underlying_quote_age_sec=fill.get('underlying_quote_age_sec'),
+            entry_fees=position['entry']['fee'], exit_fees=fill['fee'],
             fees=fees, slippage=position['entry']['slippage']+fill['slippage'], gross_pnl=gross, net_pnl=net))
         trade_id += 1
         available_after = fill['timestamp_ns']
@@ -290,6 +355,7 @@ def replay_timeframe(signal_bars: pd.DataFrame, timeframe: str, archive: Archive
         if signal == 0:
             continue
         decision = int(row.t)+width
+        last_processed_ns = decision
         if decision <= available_after or (position is not None and decision <= position['entry']['timestamp_ns']):
             continue
         if position is not None:
@@ -303,6 +369,7 @@ def replay_timeframe(signal_bars: pd.DataFrame, timeframe: str, archive: Archive
             if trigger is not None:
                 completed = close_position(trigger, reason)
                 if completed is None:
+                    halted = True
                     break
                 # Wait for a later completed signal bar before placing the next entry.
                 continue
@@ -324,11 +391,25 @@ def replay_timeframe(signal_bars: pd.DataFrame, timeframe: str, archive: Archive
                 continue
             position = dict(direction=signal, symbol=candidate['symbol'], strike=candidate['strike'],
                             expiry_ns=candidate['expiry_ns'], signal_ns=decision, rsi=float(row.rsi),
-                            rsi_sma=float(row.rsi_sma), entry=entry)
+                            rsi_sma=float(row.rsi_sma), entry=entry,
+                            entry_implied_vol=implied_vol(candidate['kind'], entry['underlying'],
+                                candidate['strike'], (candidate['expiry_ns']-entry['timestamp_ns'])/YEAR_NS,
+                                config.risk_free_rate_pct/100, entry['raw_price']))
     if position is not None and 'unresolved_reason' not in position:
         trigger = min(end_ns, position['expiry_ns']-int(config.expiry_buffer_hours*3600*SECOND))
-        close_position(trigger, 'sample_end' if trigger == end_ns else 'expiry_buffer', trigger != end_ns)
-    return trades, skips
+        if close_position(trigger, 'sample_end' if trigger == end_ns else 'expiry_buffer', trigger != end_ns) is None:
+            halted = True
+    tested_through_ns = min(last_processed_ns, end_ns)
+    diagnostics = dict(status='INCOMPLETE_UNRESOLVED_EXPOSURE' if halted else 'COMPLETE',
+        tested_through_ist=pd.Timestamp(tested_through_ns, tz='UTC').tz_convert(IST).isoformat(),
+        unresolved_exposure=bool(halted),
+        unresolved_symbol=position['symbol'] if halted and position is not None else None,
+        unresolved_reason=position.get('unresolved_reason') if halted and position is not None else None,
+        unresolved_entry_time_ist=position['entry']['timestamp_ist'] if halted and position is not None else None,
+        unresolved_entry_raw_price=position['entry']['raw_price'] if halted and position is not None else None,
+        unresolved_entry_underlying=position['entry']['underlying'] if halted and position is not None else None,
+        unresolved_entry_implied_vol=position['entry_implied_vol'] if halted and position is not None else None)
+    return trades, skips, diagnostics
 
 
 def performance(trades: list[dict], start: str, end: str) -> tuple[dict, pd.DataFrame]:
@@ -358,6 +439,7 @@ def performance(trades: list[dict], start: str, end: str) -> tuple[dict, pd.Data
         best_trade=float(pnl.max()) if len(pnl) else None,
         worst_trade=float(pnl.min()) if len(pnl) else None,
         expected_shortfall_95=float(tail.mean()) if len(tail) else None)
+    summary['market_pnl_before_costs'] = summary['gross_pnl']+summary['slippage']
     return summary, daily
 
 
@@ -393,16 +475,17 @@ def write_report(config: RsiOptionConfig, summaries: list[dict], trades: list[di
         f'Signal: Wilder RSI({config.rsi_period}) above/below SMA({config.rsi_sma_period}) of RSI  ',
         f'Options: sell {config.otm_pct:.2f}% OTM put in bullish state; sell {config.otm_pct:.2f}% OTM call in bearish state  ',
         f'Costs: {config.slippage_pct:.2f}% adverse premium slippage per fill; {config.fee_pct:.4f}% notional fee capped at {config.fee_cap_pct:.2f}% of premium; {config.tax_pct:.2f}% fee tax', '',
-        '## Results', '', '| Variant | Trades | Net P&L | Max drawdown | Sharpe | Sortino | Win rate | Fees | Slippage |',
-        '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
+        '## Results', '', '| Variant | Status | Tested through (IST) | Trades | Market P&L before costs | Net P&L | Max drawdown | Sharpe | Sortino | Win rate | Fees | Slippage |',
+        '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
     for row in summaries:
-        lines.append(f"| {row['variant']} | {row['trades']} | {_money(row['net_pnl'])} | {_money(row['max_drawdown'])} | {_fmt(row['sharpe'])} | {_fmt(row['sortino'])} | {_fmt(row['win_rate'])}% | {_money(row['fees'])} | {_money(row['slippage'])} |")
+        lines.append(f"| {row['variant']} | {row['status']} | {row['tested_through_ist']} | {row['trades']} | {_money(row['market_pnl_before_costs'])} | {_money(row['net_pnl'])} | {_money(row['max_drawdown'])} | {_fmt(row['sharpe'])} | {_fmt(row['sortino'])} | {_fmt(row['win_rate'])}% | {_money(row['fees'])} | {_money(row['slippage'])} |")
     lines += ['', '## Execution contract', '',
         f'- Signals use completed, IST-aligned futures bars. A state is bullish when RSI is above its {config.rsi_sma_period}-bar RSI SMA and bearish when below.',
         f'- Each timeframe is a separate strategy. The combined row sums them and can represent {len(config.timeframes)} simultaneous {config.quantity_btc:g} BTC short-option positions.',
         '- The selected option must have a fresh observed print before the signal, satisfy the OTM tolerance, and have at least the configured hours to expiry.',
         '- Entry uses the first observed option trade after the signal and latency within the execution-delay window. Source-print volume is ignored.',
-        '- A position closes when the RSI state reverses, at the expiry buffer, or at sample end. Exit fills may use a bounded older observed trade and record that fact.',
+        '- A position closes when the RSI state reverses, at the expiry buffer, or at sample end. It first seeks an observed trade, then a bounded stale print. If neither exists, the exit is estimated with Black-Scholes from the most recent valid pre-trigger implied volatility and current futures price; the ledger labels this `black_scholes_exit_proxy`.',
+        '- A timeframe is labelled `INCOMPLETE_UNRESOLVED_EXPOSURE` if even the model fallback cannot value an exit. Its performance fields are blank, and `tested_through_ist` shows where replay stopped.',
         '- P&L is premium received minus premium paid, fees, fee tax, and adverse slippage. No funding, margin liquidation, order-book depth, bid/ask spread, assignment, or official settlement is modelled.',
         '- Drawdown and Sharpe use realized daily USD P&L at fixed BTC size. Open-position mark-to-market drawdown between exits is unavailable in this report.', '',
         '## Skipped events', '', '```json', json.dumps(skips, indent=2), '```', '',
@@ -431,22 +514,48 @@ def run(config: RsiOptionConfig, progress=print) -> tuple[pd.DataFrame, dict[str
         raise RuntimeError('No futures ticks were found for the requested period')
     futures = pd.concat(frames, ignore_index=True).sort_values('timestamp_ns', kind='stable')
     futures = futures[(futures.timestamp_ns >= load_start.value) & (futures.timestamp_ns <= load_end.value)]
+    requested_futures = futures[(futures.timestamp_ns >= start_ist.tz_convert('UTC').value) &
+                                (futures.timestamp_ns < end_ist.tz_convert('UTC').value)]
+    available_ist_dates = set(pd.to_datetime(requested_futures.timestamp_ns, utc=True).dt.tz_convert(IST).dt.date.astype(str))
+    requested_ist_dates = {str(x.date()) for x in pd.date_range(config.start, config.end, freq='D')}
+    missing_ist_dates = sorted(requested_ist_dates-available_ist_dates)
     spots = Ticks.frame(futures)
     summaries, all_trades, daily_rows, skips = [], [], [], {}
     for timeframe in config.timeframes:
         progress(f'Building {timeframe} IST bars and RSI signals')
         bars = compute_rsi_signal(build_bars(futures, timeframe), config.rsi_period, config.rsi_sma_period)
-        trades, skipped = replay_timeframe(bars, timeframe, archive, spots, config, progress)
+        trades, skipped, diagnostics = replay_timeframe(bars, timeframe, archive, spots, config, progress)
         summary, daily = performance(trades, config.start, config.end)
+        summary.update(diagnostics)
+        if summary['status'] == 'COMPLETE' and missing_ist_dates:
+            summary['status'] = 'COMPLETE_WITH_DATA_GAPS'
+        summary['realized_closed_pnl'] = summary['net_pnl']
+        if diagnostics['unresolved_exposure']:
+            for metric in ('net_pnl', 'max_drawdown', 'sharpe', 'sortino', 'win_rate',
+                           'profit_factor', 'average_trade', 'best_trade', 'worst_trade',
+                           'expected_shortfall_95'):
+                summary[metric] = None
         summary['variant'] = timeframe
         daily.insert(0, 'variant', timeframe)
         summaries.append(summary); daily_rows.append(daily); all_trades.extend(trades); skips[timeframe] = dict(skipped)
     combined, combined_daily = performance(all_trades, config.start, config.end)
     # performance(all_trades) already groups all timeframe exits on each day.
     combined['variant'] = 'combined'
+    incomplete = [x for x in summaries if x['unresolved_exposure']]
+    combined['status'] = ('INCOMPLETE_COMPONENT' if incomplete else
+                          'COMPLETE_WITH_DATA_GAPS' if missing_ist_dates else 'COMPLETE')
+    combined['tested_through_ist'] = min(x['tested_through_ist'] for x in summaries)
+    combined['unresolved_exposure'] = bool(incomplete)
+    combined['realized_closed_pnl'] = combined['net_pnl']
+    if incomplete:
+        for metric in ('net_pnl', 'max_drawdown', 'sharpe', 'sortino', 'win_rate',
+                       'profit_factor', 'average_trade', 'best_trade', 'worst_trade',
+                       'expected_shortfall_95'):
+            combined[metric] = None
     combined_daily.insert(0, 'variant', 'combined')
     summaries.append(combined); daily_rows.append(combined_daily)
     skips['missing_futures_utc_dates'] = missing_futures
+    skips['missing_futures_ist_dates_in_requested_sample'] = missing_ist_dates
     skips['missing_source_months'] = sorted(archive.missing_source_months)
     paths = write_report(config, summaries, all_trades, daily_rows, skips, list(archive.manifests.values()))
     return pd.DataFrame(summaries), paths
